@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    background: theme(colors.creme);
+    color: theme(colors.tinta);
+    font-family: theme(fontFamily.sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: theme(colors.amarelo.200);
+    color: theme(colors.tinta);
+  }
+}
+
+@layer components {
+  /* Botões — espelham os do app principal pra consistência visual. */
+  .btn-primary {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition;
+    background: theme(colors.tinta);
+    color: theme(colors.creme);
+  }
+  .btn-primary:hover:not(:disabled) { background: theme(colors.tintaSoft.600); }
+  .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-coral {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition;
+    background: theme(colors.coral.DEFAULT);
+    color: theme(colors.creme);
+  }
+  .btn-coral:hover:not(:disabled) { background: theme(colors.coral.600); }
+
+  .btn-ghost {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium transition;
+    background: theme(colors.creme);
+    color: theme(colors.tinta);
+    border-color: rgb(43 34 51 / 0.15);
+  }
+  .btn-ghost:hover { background: theme(colors.tintaSoft.50); }
+
+  .input {
+    @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
+    background: theme(colors.creme);
+    color: theme(colors.tinta);
+    border-color: rgb(43 34 51 / 0.15);
+  }
+  .input:focus { border-color: theme(colors.coral.DEFAULT); }
+  .input::placeholder { color: theme(colors.tintaSoft.200); }
+
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider;
+    color: theme(colors.cinza);
+  }
+
+  .card {
+    @apply rounded-[10px] p-5;
+    background: theme(colors.creme);
+    border: 1px solid rgb(43 34 51 / 0.12);
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
+  }
+  .pill-erva    { background: theme(colors.erva); color: theme(colors.creme); }
+  .pill-coral   { background: theme(colors.coral.100); color: theme(colors.coral.800); }
+  .pill-amarelo { background: theme(colors.amarelo.100); color: theme(colors.amarelo.900); }
+}
