@@ -4,6 +4,7 @@ import {
   Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface NavItem {
   to: string;
@@ -120,9 +121,10 @@ export function Sidebar() {
               <div className="truncate text-xs text-cinza">{user.email}</div>
             </div>
           )}
+          <ThemeToggle />
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-tinta transition hover:bg-coral-50 hover:text-coral-800"
+            className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-tinta transition hover:bg-coral-50 hover:text-coral-800"
           >
             <LogOut size={16} />
             Sair

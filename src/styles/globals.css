@@ -2,19 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Tokens BRAND — formato `R G B` pra o Tailwind aplicar alpha
+   via `<alpha-value>` (ex: `bg-creme/40` vira rgba com 0.4).
+   Modo escuro inverte cremes/tintas e as rampas coloridas, mantendo
+   a IDENTIDADE (coral/amarelo/turquesa/lavanda continuam saturadas).
+   ============================================================ */
 @layer base {
+  :root {
+    --color-creme:    255 248 236;
+    --color-tinta:     43  34  51;
+    --color-coral:    247 107  92;
+    --color-amarelo:  255 201  60;
+    --color-turquesa:  84 160 168;
+    --color-lavanda:  166 133 201;
+    --color-areia:    255 233 203;
+    --color-erva:      91 165 114;
+    --color-aviso:    209  75  61;
+    --color-cinza:    122 110 131;
+
+    --color-coral-50:  253 237 234;
+    --color-coral-100: 251 201 194;
+    --color-coral-200: 248 163 152;
+    --color-coral-400: 247 107  92;
+    --color-coral-600: 200  70  56;
+    --color-coral-800: 140  45  34;
+    --color-coral-900:  89  26  18;
+
+    --color-amarelo-50:  255 246 217;
+    --color-amarelo-100: 255 228 160;
+    --color-amarelo-200: 255 214 107;
+    --color-amarelo-400: 255 201  60;
+    --color-amarelo-600: 217 162  34;
+    --color-amarelo-800: 148 106  14;
+    --color-amarelo-900:  92  65   8;
+
+    --color-turquesa-100: 179 221 225;
+    --color-turquesa-800:  35  76  81;
+
+    --color-lavanda-100: 212 194 227;
+    --color-lavanda-800:  82  59 112;
+
+    --color-tintaSoft-50:  240 237 242;
+    --color-tintaSoft-100: 212 204 217;
+    --color-tintaSoft-200: 155 143 168;
+    --color-tintaSoft-400:  95  79 112;
+    --color-tintaSoft-600:  63  50  76;
+    --color-tintaSoft-800:  43  34  51;
+    --color-tintaSoft-900:  26  20  31;
+  }
+
+  /* Inversão pra modo escuro. Disparado por data-theme="dark" no <html>
+     (gerenciado pelo ThemeToggle). Color-scheme avisa o browser pra
+     renderizar scrollbars/inputs nativos no escuro. */
+  html[data-theme="dark"] {
+    --color-creme:    26  20  31;
+    --color-tinta:    255 248 236;
+    --color-cinza:    181 168 194;
+    --color-areia:     47  37  56;
+
+    --color-tintaSoft-50:   34  27  42;
+    --color-tintaSoft-100:  47  37  56;
+    --color-tintaSoft-200:  74  63  88;
+    --color-tintaSoft-400: 140 127 156;
+    --color-tintaSoft-600: 194 183 206;
+    --color-tintaSoft-800: 255 248 236;
+    --color-tintaSoft-900: 255 255 255;
+
+    /* Rampa Coral invertida */
+    --color-coral-50:   89  26  18;
+    --color-coral-100: 140  45  34;
+    --color-coral-200: 200  70  56;
+    --color-coral-600: 248 163 152;
+    --color-coral-800: 251 201 194;
+    --color-coral-900: 253 237 234;
+
+    /* Rampa Amarelo invertida */
+    --color-amarelo-50:   92  65   8;
+    --color-amarelo-100: 148 106  14;
+    --color-amarelo-200: 217 162  34;
+    --color-amarelo-600: 255 214 107;
+    --color-amarelo-800: 255 228 160;
+    --color-amarelo-900: 255 246 217;
+
+    /* Pills coloridas (Turquesa/Lavanda) — só dois stops usados, swap entre eles */
+    --color-turquesa-100:  35  76  81;
+    --color-turquesa-800: 179 221 225;
+    --color-lavanda-100:  82  59 112;
+    --color-lavanda-800: 212 194 227;
+  }
+
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+
   html, body, #root {
     height: 100%;
   }
   body {
-    background: theme(colors.creme);
-    color: theme(colors.tinta);
+    background: rgb(var(--color-creme));
+    color: rgb(var(--color-tinta));
     font-family: theme(fontFamily.sans);
     -webkit-font-smoothing: antialiased;
   }
   ::selection {
-    background: theme(colors.amarelo.200);
-    color: theme(colors.tinta);
+    background: rgb(var(--color-amarelo-200));
+    color: rgb(var(--color-tinta));
   }
 }
 
@@ -22,51 +114,51 @@
   /* Botões — espelham os do app principal pra consistência visual. */
   .btn-primary {
     @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition;
-    background: theme(colors.tinta);
-    color: theme(colors.creme);
+    background: rgb(var(--color-tinta));
+    color: rgb(var(--color-creme));
   }
-  .btn-primary:hover:not(:disabled) { background: theme(colors.tintaSoft.600); }
+  .btn-primary:hover:not(:disabled) { background: rgb(var(--color-tintaSoft-600)); }
   .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
   .btn-coral {
     @apply inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition;
-    background: theme(colors.coral.DEFAULT);
-    color: theme(colors.creme);
+    background: rgb(var(--color-coral));
+    color: rgb(var(--color-creme));
   }
-  .btn-coral:hover:not(:disabled) { background: theme(colors.coral.600); }
+  .btn-coral:hover:not(:disabled) { background: rgb(var(--color-coral-600)); }
 
   .btn-ghost {
     @apply inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium transition;
-    background: theme(colors.creme);
-    color: theme(colors.tinta);
-    border-color: rgb(43 34 51 / 0.15);
+    background: rgb(var(--color-creme));
+    color: rgb(var(--color-tinta));
+    border-color: rgb(var(--color-tinta) / 0.15);
   }
-  .btn-ghost:hover { background: theme(colors.tintaSoft.50); }
+  .btn-ghost:hover { background: rgb(var(--color-tintaSoft-50)); }
 
   .input {
     @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
-    background: theme(colors.creme);
-    color: theme(colors.tinta);
-    border-color: rgb(43 34 51 / 0.15);
+    background: rgb(var(--color-creme));
+    color: rgb(var(--color-tinta));
+    border-color: rgb(var(--color-tinta) / 0.15);
   }
-  .input:focus { border-color: theme(colors.coral.DEFAULT); }
-  .input::placeholder { color: theme(colors.tintaSoft.200); }
+  .input:focus { border-color: rgb(var(--color-coral)); }
+  .input::placeholder { color: rgb(var(--color-tintaSoft-200)); }
 
   .label {
     @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider;
-    color: theme(colors.cinza);
+    color: rgb(var(--color-cinza));
   }
 
   .card {
     @apply rounded-[10px] p-5;
-    background: theme(colors.creme);
-    border: 1px solid rgb(43 34 51 / 0.12);
+    background: rgb(var(--color-creme));
+    border: 1px solid rgb(var(--color-tinta) / 0.12);
   }
 
   .pill {
     @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
   }
-  .pill-erva    { background: theme(colors.erva); color: theme(colors.creme); }
-  .pill-coral   { background: theme(colors.coral.100); color: theme(colors.coral.800); }
-  .pill-amarelo { background: theme(colors.amarelo.100); color: theme(colors.amarelo.900); }
+  .pill-erva    { background: rgb(var(--color-erva)); color: rgb(var(--color-creme)); }
+  .pill-coral   { background: rgb(var(--color-coral-100)); color: rgb(var(--color-coral-800)); }
+  .pill-amarelo { background: rgb(var(--color-amarelo-100)); color: rgb(var(--color-amarelo-900)); }
 }

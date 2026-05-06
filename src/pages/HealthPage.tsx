@@ -93,15 +93,6 @@ export default function HealthPage() {
         )}
       </section>
 
-      <section className="card">
-        <p className="text-xs font-bold uppercase tracking-wider text-cinza">Próximas fases</p>
-        <ul className="mt-2 list-disc pl-5 text-sm text-tinta/80">
-          <li><strong>Fase 2:</strong> Listagem e detalhe de clientes</li>
-          <li><strong>Fase 3:</strong> Administração de assinaturas</li>
-          <li><strong>Fase 4:</strong> Planos + matriz Plano × Atividade</li>
-          <li><strong>Fase 5:</strong> Diagnóstico (métricas, emails, logs)</li>
-        </ul>
-      </section>
     </div>
   );
 }
