@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, AlertTriangle, CheckCircle2, Edit3, Loader2, Lock, Package, Plus,
+  AlertCircle, AlertTriangle, Calendar, CheckCircle2, Edit3, Loader2, Lock, Package, Plus,
   RefreshCw, Settings2, ToggleLeft, ToggleRight, Trash2, X,
 } from "lucide-react";
 import { adminApi } from "@/services/api";
@@ -265,6 +265,17 @@ function PlanCard({
         </p>
       </div>
 
+      <div className="flex items-center justify-between gap-2 rounded-md border border-tintaSoft-100 p-3">
+        <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-cinza">
+          <Calendar size={12} /> Planejador semanal
+        </span>
+        {plan.includesWeeklyPlanner ? (
+          <StatusPill tone="lavanda"><CheckCircle2 size={10} /> Incluído</StatusPill>
+        ) : (
+          <StatusPill tone="neutral">Não incluído</StatusPill>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button onClick={onEdit} className="btn-primary">
           <Edit3 size={14} /> Editar
@@ -440,6 +451,7 @@ function PlanEditModal({
   const [description, setDescription] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [sortOrder, setSortOrder] = useState(0);
+  const [includesWeeklyPlanner, setIncludesWeeklyPlanner] = useState(false);
 
   // Matriz: undefined = ainda carregando; Set = atual.
   const [allowed, setAllowed] = useState<Set<ActivityTypeName>>(new Set());
@@ -460,6 +472,7 @@ function PlanEditModal({
         setDescription(d.description ?? "");
         setIsActive(d.isActive);
         setSortOrder(d.sortOrder);
+        setIncludesWeeklyPlanner(d.includesWeeklyPlanner);
         setAllowed(new Set(d.allowedActivities));
         setOpenDoor(d.allowedActivities.length === 0);
       } catch (err: unknown) {
@@ -513,6 +526,7 @@ function PlanEditModal({
       if ((description || null) !== (data.description ?? null)) updates.description = description || null;
       if (isActive !== data.isActive) updates.isActive = isActive;
       if (sortOrder !== data.sortOrder) updates.sortOrder = sortOrder;
+      if (includesWeeklyPlanner !== data.includesWeeklyPlanner) updates.includesWeeklyPlanner = includesWeeklyPlanner;
 
       if (Object.keys(updates).length > 0) {
         await adminApi.plans.update(data.id, updates);
@@ -614,6 +628,27 @@ function PlanEditModal({
                     <span className="block font-semibold">Plano {isActive ? "ativo" : "inativo"}</span>
                     <span className="block text-[11px] text-cinza">
                       Inativo = não aparece na vitrine de planos. Assinaturas existentes não são canceladas.
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="flex items-center gap-2 text-sm text-tinta">
+                  <button
+                    type="button"
+                    onClick={() => setIncludesWeeklyPlanner((v) => !v)}
+                    className="text-tinta"
+                    aria-label={includesWeeklyPlanner ? "Desativar planejador" : "Ativar planejador"}
+                  >
+                    {includesWeeklyPlanner ? <ToggleRight size={28} className="text-lavanda-800" /> : <ToggleLeft size={28} className="text-cinza" />}
+                  </button>
+                  <div>
+                    <span className="block font-semibold">
+                      Planejador semanal {includesWeeklyPlanner ? "incluído" : "não incluído"}
+                    </span>
+                    <span className="block text-[11px] text-cinza">
+                      Quando ligado, assinantes deste plano podem criar e usar o Planejador semanal por turma.
                     </span>
                   </div>
                 </label>

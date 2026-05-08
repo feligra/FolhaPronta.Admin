@@ -1,11 +1,12 @@
 import { classNames } from "@/utils/format";
 
-export type Tone = "erva" | "amarelo" | "coral" | "neutral";
+export type Tone = "erva" | "amarelo" | "coral" | "lavanda" | "neutral";
 
 const TONE_CLASS: Record<Tone, string> = {
   erva: "bg-erva text-creme",
   amarelo: "bg-amarelo-100 text-amarelo-900",
   coral: "bg-coral-100 text-coral-800",
+  lavanda: "bg-lavanda-100 text-lavanda-800",
   neutral: "bg-tintaSoft-50 text-tinta",
 };
 

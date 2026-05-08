@@ -247,6 +247,8 @@ export interface AdminPlanListItem {
   allowedActivitiesCount: number;
   hasActivityRestrictions: boolean;
   mercadoPagoPlanId: string | null;
+  /** Quando true, este plano dá acesso ao Planejador semanal. */
+  includesWeeklyPlanner: boolean;
 }
 
 export interface AdminPlansListResponse {
@@ -264,6 +266,7 @@ export interface AdminPlanDetail {
   isActive: boolean;
   sortOrder: number;
   mercadoPagoPlanId: string | null;
+  includesWeeklyPlanner: boolean;
   /** Lista vazia = porta aberta (libera todas). */
   allowedActivities: ActivityTypeName[];
   /** Total de assinaturas (qualquer status) usando esse plano. */
@@ -277,6 +280,7 @@ export interface AdminUpdatePlanBody {
   featuresJson?: string | null;
   isActive?: boolean;
   sortOrder?: number;
+  includesWeeklyPlanner?: boolean;
 }
 
 export interface AdminCreatePlanBody {
@@ -287,6 +291,7 @@ export interface AdminCreatePlanBody {
   featuresJson?: string;
   isActive?: boolean;
   sortOrder?: number;
+  includesWeeklyPlanner?: boolean;
 }
 
 export interface AdminCreatePlanResponse {
