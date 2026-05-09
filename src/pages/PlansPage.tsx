@@ -507,10 +507,15 @@ function PlanEditModal({
   const selectAll = () => setAllowed(new Set(ALL_ACTIVITY_TYPES));
   const selectNone = () => setAllowed(new Set());
 
+  // Feedback de save: null durante a edição, "saved" após sucesso (mostra
+  // banner verde por 800ms antes de fechar), "error" mantém banner vermelho.
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
+
   const submit = async () => {
     if (!data) return;
     setBusy(true);
     setError(null);
+    setSaveStatus("idle");
     try {
       const numericPrice = Number(price.replace(",", "."));
       if (!isFinite(numericPrice) || numericPrice < 0) {
@@ -536,13 +541,16 @@ function PlanEditModal({
       const activities = openDoor ? [] : Array.from(allowed);
       await adminApi.plans.setActivities(data.id, activities);
 
-      onSaved();
+      // Confirmação visual antes de fechar — usuário vê o "✓ Salvo" por
+      // ~700ms. Sem isso a modal fecha sem sinal de sucesso e o usuário
+      // fica sem saber se a alteração foi aplicada.
+      setSaveStatus("saved");
+      setTimeout(() => onSaved(), 700);
     } catch (err: unknown) {
       setError(
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
-        "Falha ao salvar."
+        "Falha ao salvar. Tente novamente."
       );
-    } finally {
       setBusy(false);
     }
   };
@@ -614,35 +622,39 @@ function PlanEditModal({
                 </Field>
               </div>
 
+              {/* Toggles em <div> (não <label>): button-em-label causa double-fire
+                  do click pelo bubble nativo do label, anulando o toggle.
+                  cursor-pointer no wrapper pra ainda manter UX de "área toda
+                  é clicável" — handler delega ao mesmo setter do botão. */}
               <div className="sm:col-span-2">
-                <label className="flex items-center gap-2 text-sm text-tinta">
-                  <button
-                    type="button"
-                    onClick={() => setIsActive((v) => !v)}
-                    className="text-tinta"
-                    aria-label={isActive ? "Desativar" : "Ativar"}
-                  >
-                    {isActive ? <ToggleRight size={28} className="text-erva" /> : <ToggleLeft size={28} className="text-cinza" />}
-                  </button>
+                <div
+                  className="flex cursor-pointer items-center gap-2 text-sm text-tinta"
+                  onClick={() => setIsActive((v) => !v)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") setIsActive((v) => !v); }}
+                  aria-pressed={isActive}
+                >
+                  {isActive ? <ToggleRight size={28} className="text-erva" /> : <ToggleLeft size={28} className="text-cinza" />}
                   <div>
                     <span className="block font-semibold">Plano {isActive ? "ativo" : "inativo"}</span>
                     <span className="block text-[11px] text-cinza">
                       Inativo = não aparece na vitrine de planos. Assinaturas existentes não são canceladas.
                     </span>
                   </div>
-                </label>
+                </div>
               </div>
 
               <div className="sm:col-span-2">
-                <label className="flex items-center gap-2 text-sm text-tinta">
-                  <button
-                    type="button"
-                    onClick={() => setIncludesWeeklyPlanner((v) => !v)}
-                    className="text-tinta"
-                    aria-label={includesWeeklyPlanner ? "Desativar planejador" : "Ativar planejador"}
-                  >
-                    {includesWeeklyPlanner ? <ToggleRight size={28} className="text-lavanda-800" /> : <ToggleLeft size={28} className="text-cinza" />}
-                  </button>
+                <div
+                  className="flex cursor-pointer items-center gap-2 text-sm text-tinta"
+                  onClick={() => setIncludesWeeklyPlanner((v) => !v)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") setIncludesWeeklyPlanner((v) => !v); }}
+                  aria-pressed={includesWeeklyPlanner}
+                >
+                  {includesWeeklyPlanner ? <ToggleRight size={28} className="text-lavanda-800" /> : <ToggleLeft size={28} className="text-cinza" />}
                   <div>
                     <span className="block font-semibold">
                       Planejador semanal {includesWeeklyPlanner ? "incluído" : "não incluído"}
@@ -651,7 +663,7 @@ function PlanEditModal({
                       Quando ligado, assinantes deste plano podem criar e usar o Planejador semanal por turma.
                     </span>
                   </div>
-                </label>
+                </div>
               </div>
             </section>
 
@@ -723,14 +735,24 @@ function PlanEditModal({
             </section>
 
             {error && (
-              <div className="rounded-md bg-coral-50 p-3 text-sm text-coral-800">{error}</div>
+              <div className="flex items-start gap-2 rounded-md border border-coral/30 bg-coral-50 p-3 text-sm text-coral-800">
+                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {saveStatus === "saved" && (
+              <div className="flex items-start gap-2 rounded-md border border-erva/30 bg-erva/10 p-3 text-sm text-erva">
+                <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" />
+                <span>Alterações salvas com sucesso.</span>
+              </div>
             )}
 
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
-              <button type="button" onClick={submit} disabled={busy} className="btn-primary">
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Settings2 size={14} />}
-                Salvar alterações
+              <button type="button" onClick={submit} disabled={busy || saveStatus === "saved"} className="btn-primary">
+                {busy ? <Loader2 size={14} className="animate-spin" /> :
+                 saveStatus === "saved" ? <CheckCircle2 size={14} /> : <Settings2 size={14} />}
+                {saveStatus === "saved" ? "Salvo" : "Salvar alterações"}
               </button>
             </div>
           </div>
