@@ -226,12 +226,23 @@ export interface SubscriptionListQuery {
 // ── Admin · Plans ─────────────────────────────────────────────────────
 // Lista de TODOS os tipos de atividade conhecidos pelo backend (espelha
 // o enum ActivityType em FolhaPronta.Domain). Mantenha em ordem com o C#.
+//
+// CHECKLIST quando adicionar nova atividade:
+//   1. Domain: novo valor em ActivityType.cs
+//   2. Renderer + DI em ApplicationExtensions
+//   3. Rota no ActivityTypeRouteParser
+//   4. Cliente front (web): activities.ts ActivityCatalog + ActivityIcon mapping
+//   5. ESTE ARQUIVO: ALL_ACTIVITY_TYPES + ACTIVITY_TYPE_LABEL no admin
+//   6. PNG do ícone em /icons/activities + opcionalmente PNG_SLUGS
+// Sem o passo 5 a atividade fica invisível na matriz "Plano × Atividade"
+// — admin não consegue habilitar ela em nenhum plano.
 export const ALL_ACTIVITY_TYPES = [
   "Labyrinth", "ConnectDots", "Syllable", "WordSearch", "WritingSounding",
   "NameFigure", "SymbolHunt", "VisionScreening", "Handwriting", "Coloring",
   "DrawingCopy", "Arithmetic", "NumberSequence", "Counting", "NumberToWords",
   "Crossword", "LogicPattern", "LogicOddOneOut", "LogicClassify",
-  "LogicCauseEffect", "LogicSudoku",
+  "LogicCauseEffect", "LogicSudoku", "ShapeArithmetic", "MatchColors",
+  "GeographyFlags",
 ] as const;
 export type ActivityTypeName = (typeof ALL_ACTIVITY_TYPES)[number];
 
