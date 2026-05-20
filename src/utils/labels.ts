@@ -76,4 +76,7 @@ export const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   ShapeArithmetic: "Continhas com formas",
   MatchColors: "Ligue as cores iguais",
   GeographyFlags: "Bandeiras dos países",
+  ColorNaming: "Nome das cores",
+  Bingo: "Bingo",
+  CountSticks: "Contar pauzinhos",
 };
