@@ -242,7 +242,7 @@ export const ALL_ACTIVITY_TYPES = [
   "DrawingCopy", "Arithmetic", "NumberSequence", "Counting", "NumberToWords",
   "Crossword", "LogicPattern", "LogicOddOneOut", "LogicClassify",
   "LogicCauseEffect", "LogicSudoku", "ShapeArithmetic", "MatchColors",
-  "GeographyFlags", "ColorNaming", "Bingo", "CountSticks",
+  "GeographyFlags", "ColorNaming", "Bingo", "CountSticks", "Adedonha",
 ] as const;
 export type ActivityTypeName = (typeof ALL_ACTIVITY_TYPES)[number];
 

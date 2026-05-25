@@ -79,4 +79,5 @@ export const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   ColorNaming: "Nome das cores",
   Bingo: "Bingo",
   CountSticks: "Contar pauzinhos",
+  Adedonha: "Adedonha",
 };
