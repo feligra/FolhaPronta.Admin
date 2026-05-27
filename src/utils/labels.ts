@@ -80,4 +80,5 @@ export const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   Bingo: "Bingo",
   CountSticks: "Contar pauzinhos",
   Adedonha: "Adedonha",
+  TimeClock: "Lendo as horas",
 };
