@@ -374,6 +374,9 @@ function PlanEditModal({
   const [isActive, setIsActive] = useState(true);
   const [sortOrder, setSortOrder] = useState(0);
   const [includesWeeklyPlanner, setIncludesWeeklyPlanner] = useState(false);
+  // Features: editor textarea com 1 linha = 1 bullet. Convertido pra JSON array
+  // no save. Stored como string JSON em `featuresJson` no banco.
+  const [features, setFeatures] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -390,6 +393,7 @@ function PlanEditModal({
         setIsActive(d.isActive);
         setSortOrder(d.sortOrder);
         setIncludesWeeklyPlanner(d.includesWeeklyPlanner);
+        setFeatures(featuresJsonToLines(d.featuresJson));
       } catch (err: unknown) {
         if (!cancelled) {
           setError(
@@ -432,6 +436,8 @@ function PlanEditModal({
       if (isActive !== data.isActive) updates.isActive = isActive;
       if (sortOrder !== data.sortOrder) updates.sortOrder = sortOrder;
       if (includesWeeklyPlanner !== data.includesWeeklyPlanner) updates.includesWeeklyPlanner = includesWeeklyPlanner;
+      const newFeaturesJson = linesToFeaturesJson(features);
+      if (newFeaturesJson !== (data.featuresJson ?? null)) updates.featuresJson = newFeaturesJson;
 
       if (Object.keys(updates).length > 0) {
         await adminApi.plans.update(data.id, updates);
@@ -513,6 +519,21 @@ function PlanEditModal({
                     placeholder="Texto curto exibido na página de preço."
                   />
                 </Field>
+              </div>
+
+              <div className="sm:col-span-2">
+                <Field label='Features ("Tudo que está incluso" no card de preço — 1 linha = 1 bullet)'>
+                  <textarea
+                    className="input min-h-[140px] font-mono text-xs"
+                    value={features}
+                    onChange={(e) => setFeatures(e.target.value)}
+                    placeholder={"Ex.:\nCatálogo completo de atividades\nAcervo de 517+ ilustrações\nGeração ilimitada\nPlanejador semanal incluso"}
+                  />
+                </Field>
+                <p className="mt-1 text-[11px] text-cinza">
+                  Cada linha vira um item com check verde. Linhas em branco são ignoradas.
+                  Salvo como JSON array no banco (<code>featuresJson</code>).
+                </p>
               </div>
 
               {/* Toggles em <div> (não <label>): button-em-label causa double-fire
@@ -598,4 +619,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+// `featuresJson` no banco é JSON array de strings. UI usa textarea com 1 linha
+// = 1 feature porque é mais simples pro admin que editar JSON cru.
+function featuresJsonToLines(json: string | null | undefined): string {
+  if (!json) return "";
+  try {
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((x): x is string => typeof x === "string").join("\n");
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+function linesToFeaturesJson(text: string): string | null {
+  const items = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  if (items.length === 0) return null;
+  return JSON.stringify(items);
 }
