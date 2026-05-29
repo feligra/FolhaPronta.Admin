@@ -341,9 +341,10 @@ function PlanDeleteModal({
           </button>
         </div>
         <p className="text-sm text-tinta">
-          Excluir o plano <strong>{plan.name}</strong> ({plan.slug})? Só funciona se NÃO houver assinatura
-          com acesso vigente (Ativa/Trial dentro do prazo, ou Cancelada com período ainda corrente).
-          Subs expiradas/canceladas-vencidas não bloqueiam.
+          Excluir o plano <strong>{plan.name}</strong> ({plan.slug})? Só bloqueia se houver
+          assinatura <strong>Ativa</strong> ou <strong>Trial</strong> realmente vigente
+          (cliente pagando agora). Subs Canceladas (mesmo com período residual),
+          Expiradas e PendingPayment não bloqueiam.
         </p>
         {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
         <div className="mt-5 flex justify-end gap-2">
