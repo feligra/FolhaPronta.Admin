@@ -162,6 +162,15 @@ export const adminApi = {
     },
   },
 
+  /// Planos SEMANAIS (não confundir com planos de assinatura acima).
+  /// Soft-delete: o backend marca IsDeleted e o reminder job para de enviar
+  /// emails automaticamente (filtra IsDeleted em todas as queries).
+  weeklyPlans: {
+    delete: async (id: string, reason?: string): Promise<void> => {
+      await api.delete(`/admin/weekly-plans/${id}`, { data: { reason } });
+    },
+  },
+
   subscriptions: {
     list: async (q: SubscriptionListQuery = {}): Promise<AdminSubscriptionsListResponse> => {
       const params = new URLSearchParams();

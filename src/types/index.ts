@@ -170,6 +170,8 @@ export interface AdminClassroom {
   name: string;
   studentCount: number;
   createdAt: string;
+  /** Id do plano semanal ativo da turma; null quando não tem. */
+  activeWeeklyPlanId?: string | null;
 }
 
 export interface AdminUserDetail {

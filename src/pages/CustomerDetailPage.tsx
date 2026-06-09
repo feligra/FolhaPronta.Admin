@@ -391,14 +391,30 @@ export default function CustomerDetailPage() {
           ) : (
             <ul className="divide-y divide-tintaSoft-100">
               {classrooms.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                   <div className="min-w-0">
                     <p className="font-medium text-tinta">{c.name}</p>
                     <p className="text-xs text-cinza">Criada em {formatDate(c.createdAt)}</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-xs text-cinza">
-                    <UsersIcon size={12} /> {c.studentCount} aluno(s)
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1 text-xs text-cinza">
+                      <UsersIcon size={12} /> {c.studentCount} aluno(s)
+                    </span>
+                    {/* Plano semanal ativo: mostra status + botão de delete.
+                        Sem plano: pill cinza apenas (admin não consegue criar
+                        plano por user — quem cria é a professora). */}
+                    {c.activeWeeklyPlanId ? (
+                      <WeeklyPlanDeleteButton
+                        planId={c.activeWeeklyPlanId}
+                        classroomName={c.name}
+                        onDeleted={load}
+                      />
+                    ) : (
+                      <span className="rounded-full bg-tintaSoft-50 px-2.5 py-0.5 text-xs text-cinza">
+                        Sem plano semanal
+                      </span>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1100,5 +1116,72 @@ function DeleteUserModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Botão de excluir o plano semanal ATIVO da turma. Após excluir:
+ *   - Backend faz soft-delete (IsDeleted=true)
+ *   - WeeklyPlanReminderJob deixa de enviar emails (filtro automático)
+ *   - Recarrega o detail pra refletir "Sem plano semanal"
+ */
+function WeeklyPlanDeleteButton({
+  planId, classroomName, onDeleted,
+}: {
+  planId: string;
+  classroomName: string;
+  onDeleted: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await adminApi.weeklyPlans.delete(planId, "Excluído pelo admin");
+      setConfirming(false);
+      onDeleted();
+    } catch (e: unknown) {
+      setErr(
+        (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+          ?? "Falha ao excluir plano.",
+      );
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="inline-flex items-center gap-1 rounded-full border border-coral/30 bg-coral-50 px-2.5 py-0.5 text-xs font-semibold text-coral-800 transition hover:bg-coral-100"
+        title="Excluir plano semanal ativo (cancela emails de lembrete)"
+      >
+        <Trash2 size={11} /> Plano ativo
+      </button>
+
+      {confirming && (
+        <Modal onClose={() => setConfirming(false)} title="Excluir plano semanal?">
+          <p className="text-sm text-tinta">
+            Excluir o plano semanal ativo da turma <strong>{classroomName}</strong>?
+            A professora deixa de receber emails de lembrete sobre as atividades.
+            Os PDFs já gerados continuam no storage mas não vão mais ser listados.
+          </p>
+          {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" onClick={() => setConfirming(false)} className="btn-ghost">
+              Voltar
+            </button>
+            <button type="button" onClick={submit} disabled={busy} className="btn-coral">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Excluir plano
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
