@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle, ArrowLeft, Ban, BookOpen, CalendarPlus, CheckCircle2, CreditCard,
-  Edit3, FileText, Loader2, Mail, MapPin, Phone, Repeat, Send, Sparkles, Trash2,
-  User as UserIcon, Users as UsersIcon, X,
+  Edit3, FileText, Loader2, LogIn, Mail, MapPin, Phone, Repeat, RefreshCw, Send,
+  Sparkles, Trash2, User as UserIcon, Users as UsersIcon, X,
 } from "lucide-react";
 import { adminApi } from "@/services/api";
-import type { AdminPlanListItem, AdminUserDetail, AdminUpdateUserBody } from "@/types";
+import type {
+  AdminLoginHistoryResponse, AdminPlanListItem, AdminUserDetail, AdminUpdateUserBody,
+} from "@/types";
 import { classNames, formatDate, formatDateTime, formatPrice } from "@/utils/format";
 import {
   ACTIVITY_TYPE_LABEL,
@@ -16,7 +18,7 @@ import {
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
 
-type TabKey = "overview" | "subscription" | "payments" | "activities" | "classrooms";
+type TabKey = "overview" | "subscription" | "payments" | "activities" | "classrooms" | "logins";
 
 const TABS: { key: TabKey; label: string; icon: typeof UserIcon }[] = [
   { key: "overview", label: "Visão geral", icon: UserIcon },
@@ -24,6 +26,7 @@ const TABS: { key: TabKey; label: string; icon: typeof UserIcon }[] = [
   { key: "payments", label: "Pagamentos", icon: CreditCard },
   { key: "activities", label: "Atividades", icon: FileText },
   { key: "classrooms", label: "Turmas", icon: BookOpen },
+  { key: "logins", label: "Logins", icon: LogIn },
 ];
 
 export default function CustomerDetailPage() {
@@ -402,8 +405,138 @@ export default function CustomerDetailPage() {
           )}
         </Section>
       )}
+
+      {tab === "logins" && id && <LoginHistoryPanel userId={id} />}
     </div>
   );
+}
+
+/**
+ * Painel "Histórico de logins" — lista paginada (data/hora, IP, User-Agent
+ * resumido) com botão de recarregar. Lazy: só busca quando a aba é aberta.
+ */
+function LoginHistoryPanel({ userId }: { userId: string }) {
+  const [data, setData] = useState<AdminLoginHistoryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await adminApi.users.loginHistory(userId, 0, 100);
+      setData(r);
+    } catch (e: unknown) {
+      setErr(
+        (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+          ?? "Falha ao carregar histórico de login.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [userId]);
+
+  return (
+    <section className="card space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-cinza">Histórico de logins</h2>
+          <p className="mt-1 font-display text-2xl font-bold text-tinta">
+            {data ? `${data.totalCount}` : "—"}{" "}
+            <span className="text-sm font-normal text-cinza">{data?.totalCount === 1 ? "login" : "logins"} registrado(s)</span>
+          </p>
+          <p className="text-xs text-cinza">Mais recente primeiro · até 100 entradas por carregamento</p>
+        </div>
+        <button onClick={load} className="btn-ghost" disabled={loading}>
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          Recarregar
+        </button>
+      </header>
+
+      {err && (
+        <div className="flex items-start gap-2 rounded-md border border-coral/30 bg-coral-50 p-3 text-sm text-coral-800">
+          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          <span>{err}</span>
+        </div>
+      )}
+
+      {loading && !data && (
+        <div className="flex items-center justify-center gap-2 py-12 text-cinza">
+          <Loader2 size={18} className="animate-spin" /> Carregando…
+        </div>
+      )}
+
+      {data && data.items.length === 0 && !loading && (
+        <p className="rounded-md bg-tintaSoft-50 p-6 text-center text-sm text-cinza">
+          Nenhum login registrado pra esse usuário ainda.
+        </p>
+      )}
+
+      {data && data.items.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-tintaSoft-100 text-left text-[10px] font-bold uppercase tracking-wider text-cinza">
+                <th className="py-2 pr-4">Data e hora</th>
+                <th className="py-2 pr-4">IP</th>
+                <th className="py-2 pr-4">Dispositivo</th>
+                <th className="py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-tintaSoft-100">
+              {data.items.map((ev) => (
+                <tr key={ev.id} className="align-top">
+                  <td className="py-3 pr-4 font-medium text-tinta">{formatDateTime(ev.occurredAt)}</td>
+                  <td className="py-3 pr-4 font-mono text-xs text-tinta/85">{ev.ipAddress ?? "—"}</td>
+                  <td className="py-3 pr-4 text-xs text-tinta/70">
+                    {summarizeUserAgent(ev.userAgent)}
+                  </td>
+                  <td className="py-3">
+                    {ev.success ? (
+                      <StatusPill tone="erva"><CheckCircle2 size={10} /> Sucesso</StatusPill>
+                    ) : (
+                      <StatusPill tone="amarelo"><Ban size={10} /> Falhou</StatusPill>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Resume um User-Agent bruto pra algo legível. UAs são strings longas e
+ * cheias de ruído ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/...").
+ * Reconhecimento simples por substring — não vale a pena depender de uma lib
+ * só pra mostrar "Chrome on Windows" no painel.
+ */
+function summarizeUserAgent(ua: string | null): string {
+  if (!ua) return "—";
+
+  const lc = ua.toLowerCase();
+
+  let os = "Desconhecido";
+  if (lc.includes("windows")) os = "Windows";
+  else if (lc.includes("mac os x") || lc.includes("macintosh")) os = "macOS";
+  else if (lc.includes("android")) os = "Android";
+  else if (lc.includes("iphone") || lc.includes("ipad") || lc.includes("ios")) os = "iOS";
+  else if (lc.includes("linux")) os = "Linux";
+
+  let browser = "Desconhecido";
+  // Ordem importa: Edge contém "chrome", Opera contém "chrome", etc.
+  if (lc.includes("edg/")) browser = "Edge";
+  else if (lc.includes("opr/") || lc.includes("opera")) browser = "Opera";
+  else if (lc.includes("firefox")) browser = "Firefox";
+  else if (lc.includes("chrome")) browser = "Chrome";
+  else if (lc.includes("safari")) browser = "Safari";
+
+  return `${browser} · ${os}`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

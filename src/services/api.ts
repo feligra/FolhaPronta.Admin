@@ -7,6 +7,7 @@ import type {
   AdminPlansListResponse, AdminPlanDetail, AdminUpdatePlanBody, ActivityTypeName,
   AdminCreatePlanBody, AdminCreatePlanResponse,
   AdminGrantSubscriptionBody, AdminGrantSubscriptionResponse, AdminChangePlanAdminBody,
+  AdminLoginHistoryResponse,
   MetricsResponse, AdminEmailLogsResponse, EmailLogsQuery,
 } from "@/types";
 
@@ -151,6 +152,13 @@ export const adminApi = {
     /// (índice unique tem filtro `WHERE IsDeleted = false`).
     remove: async (id: string, reason?: string): Promise<void> => {
       await api.delete(`/admin/users/${id}`, { data: { reason } });
+    },
+    /// Histórico paginado de logins (data, IP, UA). Default 50 entradas, cap 200.
+    loginHistory: async (id: string, skip = 0, take = 50): Promise<AdminLoginHistoryResponse> => {
+      const res = await api.get<AdminLoginHistoryResponse>(
+        `/admin/users/${id}/login-history?skip=${skip}&take=${take}`,
+      );
+      return res.data;
     },
   },
 

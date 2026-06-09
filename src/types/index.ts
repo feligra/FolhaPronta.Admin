@@ -189,6 +189,20 @@ export interface UserListQuery {
   pageSize?: number;
 }
 
+// ── Admin · Login history ─────────────────────────────────────────────
+export interface AdminLoginEvent {
+  id: string;
+  occurredAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  success: boolean;
+}
+
+export interface AdminLoginHistoryResponse {
+  totalCount: number;
+  items: AdminLoginEvent[];
+}
+
 // ── Admin · Subscriptions ─────────────────────────────────────────────
 export interface AdminSubscriptionListItem {
   id: string;
