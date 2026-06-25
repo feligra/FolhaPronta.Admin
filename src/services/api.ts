@@ -5,6 +5,7 @@ import type {
   AdminUsersListResponse, AdminUserDetail, UserListQuery, AdminUpdateUserBody,
   AdminSubscriptionsListResponse, SubscriptionListQuery,
   AdminPlansListResponse, AdminPlanDetail, AdminUpdatePlanBody, ActivityTypeName,
+  AdminActivitiesListResponse,
   AdminCreatePlanBody, AdminCreatePlanResponse,
   AdminGrantSubscriptionBody, AdminGrantSubscriptionResponse, AdminChangePlanAdminBody,
   AdminLoginHistoryResponse,
@@ -220,6 +221,16 @@ export const adminApi = {
     },
     delete: async (id: string): Promise<void> => {
       await api.delete(`/admin/plans/${id}`);
+    },
+  },
+
+  activities: {
+    list: async (): Promise<AdminActivitiesListResponse> => {
+      const res = await api.get<AdminActivitiesListResponse>("/admin/activities");
+      return res.data;
+    },
+    setMaintenance: async (activityType: number, disabled: boolean, note?: string): Promise<void> => {
+      await api.put(`/admin/activities/${activityType}`, { disabled, note });
     },
   },
 

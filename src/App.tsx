@@ -7,6 +7,7 @@ import CustomersPage from "@/pages/CustomersPage";
 import CustomerDetailPage from "@/pages/CustomerDetailPage";
 import SubscriptionsPage from "@/pages/SubscriptionsPage";
 import PlansPage from "@/pages/PlansPage";
+import LessonsPage from "@/pages/LessonsPage";
 import MetricsPage from "@/pages/MetricsPage";
 import EmailLogsPage from "@/pages/EmailLogsPage";
 
@@ -63,6 +64,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <PlansPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/licoes"
+          element={
+            <ProtectedRoute>
+              <LessonsPage />
             </ProtectedRoute>
           }
         />

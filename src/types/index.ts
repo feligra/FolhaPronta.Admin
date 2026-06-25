@@ -284,6 +284,23 @@ export interface AdminPlansListResponse {
   totalActivityTypes: number;
 }
 
+// ── Atividades (ativar/desativar manutenção) ──────────────────────────
+export interface AdminActivityItem {
+  activityType: number;
+  /** Nome do enum (PascalCase). */
+  name: string;
+  label: string;
+  /** true = em manutenção (desativada). */
+  disabled: boolean;
+}
+
+export interface AdminActivitiesListResponse {
+  items: AdminActivityItem[];
+  total: number;
+  active: number;
+  disabled: number;
+}
+
 export interface AdminPlanDetail {
   id: string;
   name: string;
