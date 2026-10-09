@@ -11,6 +11,7 @@ import type {
   AdminLoginHistoryResponse,
   MetricsResponse, AdminEmailLogsResponse, EmailLogsQuery,
   NotificationRecipient, NotificationRecipientBody, NotificationDeliveryStatus,
+  AdminEmailOptions, AdminEmailDraft, AdminEmailPreview, AdminSendEmailBody, AdminEmailBatchResult,
 } from "@/types";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "https://localhost:7166") + "/api";
@@ -261,6 +262,16 @@ export const adminApi = {
   },
 
   notificationStatus: async (): Promise<NotificationDeliveryStatus> => (await api.get<NotificationDeliveryStatus>("/admin/notification-status")).data,
+
+  emails: {
+    options: async (): Promise<AdminEmailOptions> => (await api.get<AdminEmailOptions>("/admin/emails/templates")).data,
+    preview: async (body: AdminEmailDraft, signal?: AbortSignal): Promise<AdminEmailPreview> =>
+      (await api.post<AdminEmailPreview>("/admin/emails/preview", body, { signal })).data,
+    send: async (body: AdminSendEmailBody): Promise<AdminEmailBatchResult> =>
+      (await api.post<AdminEmailBatchResult>("/admin/emails/send", body)).data,
+    status: async (requestId: string): Promise<AdminEmailBatchResult> =>
+      (await api.get<AdminEmailBatchResult>(`/admin/emails/send/${encodeURIComponent(requestId)}`)).data,
+  },
 
   emailLogs: {
     list: async (q: EmailLogsQuery = {}): Promise<AdminEmailLogsResponse> => {

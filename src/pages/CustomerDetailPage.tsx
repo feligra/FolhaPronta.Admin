@@ -8,6 +8,7 @@ import {
 import { adminApi } from "@/services/api";
 import type {
   AdminLoginHistoryResponse, AdminPlanListItem, AdminUserDetail, AdminUpdateUserBody,
+  AdminGrantSubscriptionResponse,
 } from "@/types";
 import { classNames, formatDate, formatDateTime, formatPrice } from "@/utils/format";
 import {
@@ -37,6 +38,7 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("overview");
+  const [grantResult, setGrantResult] = useState<AdminGrantSubscriptionResponse | null>(null);
 
   // Modal state pra ações de assinatura. Só uma aberta por vez.
   type SubAction = { kind: "grant" | "change" | "cancel" | "extend" } | null;
@@ -68,7 +70,7 @@ export default function CustomerDetailPage() {
   };
 
   useEffect(() => {
-    setData(null); setTab("overview"); setSubAction(null); setEditingUser(false); setDeletingUser(false);
+    setData(null); setTab("overview"); setSubAction(null); setEditingUser(false); setDeletingUser(false); setGrantResult(null);
     void load();
     return () => { loadVersion.current++; };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
@@ -85,6 +87,7 @@ export default function CustomerDetailPage() {
   if (error || !data) {
     return (
       <div className="space-y-4">
+        {grantResult && <GrantResultNotice result={grantResult} />}
         <Link to="/clientes" className="inline-flex items-center gap-1 text-sm text-cinza hover:text-tinta">
           <ArrowLeft size={14} /> Voltar
         </Link>
@@ -104,6 +107,7 @@ export default function CustomerDetailPage() {
 
   return (
     <div className="space-y-6">
+      {grantResult && <GrantResultNotice result={grantResult} />}
       <Link to="/clientes" className="inline-flex items-center gap-1 text-sm text-cinza hover:text-tinta">
         <ArrowLeft size={14} /> Clientes
       </Link>
@@ -300,8 +304,10 @@ export default function CustomerDetailPage() {
       {subAction?.kind === "grant" && id && (
         <GrantSubscriptionModal
           userId={id}
+          userEmail={user.email}
           onClose={() => setSubAction(null)}
-          onDone={() => { setSubAction(null); load(); }}
+          onRefresh={() => { setSubAction(null); void load(); }}
+          onDone={(result) => { setGrantResult(result); setSubAction(null); void load(); }}
         />
       )}
       {subAction?.kind === "change" && currentSubscription && (
@@ -656,9 +662,9 @@ function EmailNotConfirmedBanner({ userId }: { userId: string }) {
 
 // ── Modal genérico ─────────────────────────────────────────────────────
 function Modal({
-  title, onClose, children,
-}: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <AdminDialog title={title} onClose={onClose}>{children}</AdminDialog>;
+  title, onClose, children, busy = false,
+}: { title: string; onClose: () => void; children: React.ReactNode; busy?: boolean }) {
+  return <AdminDialog title={title} onClose={onClose} busy={busy}>{children}</AdminDialog>;
 }
 
 /** Carrega planos ATIVOS pra os selects das modais (Conceder/Trocar). */
@@ -683,38 +689,65 @@ function useActivePlans() {
 const DAYS_PRESETS = [7, 15, 30, 60, 90];
 
 // ── Conceder assinatura ────────────────────────────────────────────────
+function GrantResultNotice({ result }: { result: AdminGrantSubscriptionResponse }) {
+  return <div role="status" className="rounded-xl border border-erva/30 bg-erva/10 p-4 text-sm">
+    <p className="font-semibold">Assinatura concedida até {formatDate(result.currentPeriodEnd)}.</p>
+    <p className="mt-1">{result.emailStatus === "queued" ? "O aviso por e-mail foi colocado na fila de envio."
+      : result.emailStatus === "sent" ? "O aviso por e-mail foi enviado."
+        : result.emailStatus === "failed" ? "A assinatura está ativa, mas o aviso por e-mail não foi enviado."
+          : "A concessão foi realizada sem enviar e-mail."}</p>
+    {result.emailError && <p className="mt-1 text-coral-800">{result.emailError}</p>}
+    {result.emailStatus !== "not_requested" && <Link to="/emails" className="mt-2 inline-block font-semibold underline underline-offset-4">Acompanhar e-mail no histórico</Link>}
+  </div>;
+}
+
 function GrantSubscriptionModal({
-  userId, onClose, onDone,
-}: { userId: string; onClose: () => void; onDone: () => void }) {
+  userId, userEmail, onClose, onRefresh, onDone,
+}: { userId: string; userEmail: string; onClose: () => void; onRefresh: () => void; onDone: (result: AdminGrantSubscriptionResponse) => void }) {
   const { plans, error: plansError } = useActivePlans();
   const [planId, setPlanId] = useState<string>("");
   const [days, setDays] = useState(30);
   const [reason, setReason] = useState("");
+  const [sendEmail, setSendEmail] = useState(false);
+  const [emailMessageType, setEmailMessageType] = useState<"generic" | "custom">("generic");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [uncertain, setUncertain] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const mutation = useRef(false);
 
   const submit = async () => {
+    if (mutation.current || uncertain) return;
     if (!planId) { setErr("Escolha um plano."); return; }
+    if (!Number.isInteger(days) || days < 1 || days > 365) { setErr("Informe um período válido de 1 a 365 dias."); return; }
+    if (sendEmail && emailMessageType === "custom" && !emailMessage.trim()) { setErr("Escreva a mensagem personalizada ou escolha a mensagem genérica."); return; }
+    mutation.current = true;
     setBusy(true);
     setErr(null);
     try {
-      await adminApi.users.grantSubscription(userId, { planId, days, reason: reason || undefined });
-      onDone();
+      const result = await adminApi.users.grantSubscription(userId, {
+        planId, days, reason: reason || undefined, sendEmail,
+        ...(sendEmail ? { emailMessageType, ...(emailMessageType === "custom" ? { emailMessage: emailMessage.trim() } : {}) } : {}),
+      });
+      onDone(result);
     } catch (e: unknown) {
-      setErr((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
-        ?? "Falha ao conceder assinatura.");
-    } finally { setBusy(false); }
+      const response = (e as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response;
+      if (!response || response.status === 408 || (response.status ?? 0) >= 500) {
+        setUncertain(true);
+        setErr("Não foi possível confirmar a concessão. Atualize os dados do cliente para conferir o acesso antes de tentar novamente.");
+      } else setErr(response.data?.error?.message ?? "Falha ao conceder assinatura.");
+    } finally { mutation.current = false; setBusy(false); }
   };
 
   return (
-    <Modal title="Conceder assinatura" onClose={onClose}>
+    <Modal title="Conceder assinatura" onClose={uncertain ? onRefresh : onClose} busy={busy}>
       <p className="text-sm text-tinta/80">
-        Cria uma assinatura <strong>Active</strong> diretamente, sem passar pelo Mercado Pago.
-        Use pra cortesias, parcerias ou setup manual.
+        Libere acesso ao plano pelo período escolhido. Use para cortesias e parcerias.
       </p>
 
-      <label className="label mt-4">Plano</label>
-      <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
+      <fieldset disabled={busy || uncertain} className="min-w-0">
+      <label htmlFor="grant-plan" className="label mt-4">Plano</label>
+      <select id="grant-plan" className="input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
         <option value="">— Escolha um plano —</option>
         {plans?.map((p) => (
           <option key={p.id} value={p.id}>{p.name} (R$ {formatPrice(p.monthlyPrice)}/mês)</option>
@@ -724,14 +757,28 @@ function GrantSubscriptionModal({
 
       <DaysPicker days={days} setDays={setDays} />
 
-      <label className="label mt-4">Motivo (opcional)</label>
-      <textarea className="input min-h-[60px]" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: cortesia de boas-vindas" />
+      <label htmlFor="grant-reason" className="label mt-4">Motivo interno (opcional)</label>
+      <textarea id="grant-reason" className="input min-h-[60px]" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: cortesia de boas-vindas" />
 
-      {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
+      <div className="mt-5 rounded-xl border border-tinta/15 p-4">
+        <label className="flex cursor-pointer items-start gap-3"><input type="checkbox" checked={sendEmail} onChange={(event) => setSendEmail(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[#c84638]" /><span><span className="block text-sm font-semibold">Enviar e-mail ao cliente</span><span className="mt-1 block break-all text-xs text-cinza">Avisar {userEmail} sobre a assinatura recebida.</span></span></label>
+        {sendEmail && <div className="mt-4 space-y-3">
+          <fieldset className="space-y-2"><legend className="label">Mensagem do e-mail</legend>
+            <label className="flex items-center gap-2 text-sm"><input type="radio" name="grant-email-message" checked={emailMessageType === "generic"} onChange={() => setEmailMessageType("generic")} className="h-4 w-4 accent-[#c84638]" /> Mensagem genérica</label>
+            <label className="flex items-center gap-2 text-sm"><input type="radio" name="grant-email-message" checked={emailMessageType === "custom"} onChange={() => setEmailMessageType("custom")} className="h-4 w-4 accent-[#c84638]" /> Mensagem personalizada</label>
+          </fieldset>
+          {emailMessageType === "generic" ? <p className="rounded-md bg-turquesa/10 p-3 text-sm">O cliente receberá um aviso de que ganhou <strong>{days} {days === 1 ? "dia" : "dias"} de assinatura</strong>, com o nome do plano e a data final do acesso.</p>
+            : <div><label htmlFor="grant-email-message" className="label">Sua mensagem</label><textarea id="grant-email-message" value={emailMessage} onChange={(event) => setEmailMessage(event.target.value)} maxLength={10000} className="input min-h-[130px]" placeholder="Escreva a mensagem que o cliente receberá…" /><p className="mt-1 text-xs text-cinza">O período e o plano concedidos acompanham sua mensagem.</p></div>}
+        </div>}
+      </div>
+      </fieldset>
+
+      {err && <p role="alert" className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
+      {uncertain && <button type="button" onClick={onRefresh} className="btn-ghost mt-3"><RefreshCw size={14} /> Atualizar dados do cliente</button>}
 
       <div className="mt-5 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
-        <button type="button" onClick={submit} disabled={busy} className="btn-primary">
+        <button type="button" onClick={uncertain ? onRefresh : onClose} disabled={busy} className="btn-ghost">{uncertain ? "Fechar e atualizar" : "Cancelar"}</button>
+        <button type="button" onClick={submit} disabled={busy || uncertain || !plans?.length} className="btn-primary">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
           Conceder por {days}d
         </button>

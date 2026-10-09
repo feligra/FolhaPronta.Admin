@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell,
+  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell, Send,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { to: "/assinaturas", label: "Assinaturas", icon: CreditCard },
   { to: "/planos", label: "Planos", icon: Package },
   { to: "/licoes", label: "Lições", icon: Wrench },
+  { to: "/enviar-email", label: "Enviar e-mail", icon: Send },
   { to: "/emails", label: "Logs de email", icon: Mail },
   { to: "/notificacoes", label: "Notificações", icon: Bell },
   { to: "/health", label: "Saúde do painel", icon: Activity },

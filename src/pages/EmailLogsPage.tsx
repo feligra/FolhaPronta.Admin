@@ -44,6 +44,8 @@ const TEMPLATE_OPTIONS = [
   { value: "PaymentApproved", label: "Pagamento aprovado" },
   { value: "ActivityReported", label: "Report de atividade" },
   { value: "ContactMessage", label: "Mensagem de contato" },
+  { value: "AdminMessage", label: "Mensagem enviada pelo admin" },
+  { value: "SubscriptionGranted", label: "Assinatura concedida" },
 ];
 
 export default function EmailLogsPage() {
@@ -126,7 +128,7 @@ export default function EmailLogsPage() {
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Logs de email</h1>
           <p className="mt-1 text-sm text-cinza">
-            Auditoria de emails transacionais. Status, falhas e templates.
+            Acompanhe os e-mails automáticos e as mensagens enviadas pelo painel.
           </p>
         </div>
         <button onClick={load} className="btn-ghost" title="Recarregar">

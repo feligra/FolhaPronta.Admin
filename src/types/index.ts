@@ -358,11 +358,16 @@ export interface AdminGrantSubscriptionBody {
   planId: string;
   days: number;
   reason?: string;
+  sendEmail?: boolean;
+  emailMessageType?: "generic" | "custom";
+  emailMessage?: string;
 }
 
 export interface AdminGrantSubscriptionResponse {
   subscriptionId: string;
   currentPeriodEnd: string;
+  emailStatus: "not_requested" | "queued" | "sent" | "failed";
+  emailError?: string | null;
 }
 
 export interface AdminChangePlanAdminBody {
@@ -473,4 +478,52 @@ export interface NotificationDeliveryStatus {
   delivered: number;
   cancelled: number;
   oldestPendingAt: string | null;
+}
+
+export interface AdminEmailTemplate {
+  id: string;
+  name: string;
+  description: string;
+  accentColor: string;
+}
+
+export interface AdminEmailOptions {
+  templates: AdminEmailTemplate[];
+  categories: { id: string; label: string }[];
+  maxRecipients: number;
+  maxSubjectLength: number;
+  maxBodyLength: number;
+  sendingConfigured: boolean;
+}
+
+export interface AdminEmailDraft {
+  templateId: string;
+  category: string;
+  subject: string;
+  body: string;
+}
+
+export interface AdminEmailPreview {
+  subject: string;
+  html: string;
+}
+
+export interface AdminSendEmailBody extends AdminEmailDraft {
+  requestId: string;
+  recipients: string[];
+}
+
+export interface AdminEmailBatchResult {
+  requestId: string;
+  total: number;
+  queued: number;
+  sent: number;
+  failed: number;
+  results: {
+    email: string;
+    status: "queued" | "sent" | "failed";
+    error?: string | null;
+    retrying?: boolean;
+    nextAttemptAt?: string | null;
+  }[];
 }
