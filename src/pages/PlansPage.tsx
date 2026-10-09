@@ -67,14 +67,14 @@ export default function PlansPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Planos</h1>
           <p className="mt-1 text-sm text-cinza">
             Plano único do produto. Edite nome, preço e descrição. Assinantes pagos têm acesso a tudo.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={load} className="btn-ghost" title="Recarregar">
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Recarregar
@@ -171,7 +171,7 @@ function PlanCard({
     <article className="card flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-2xl font-bold text-tinta">{plan.name}</h2>
             <span className="text-[10px] uppercase tracking-wider text-cinza">{plan.slug}</span>
           </div>
@@ -186,7 +186,7 @@ function PlanCard({
         </StatusPill>
       </div>
 
-      <div className="flex items-center justify-between gap-2 rounded-md border border-tintaSoft-100 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-tintaSoft-100 p-3">
         <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-cinza">
           <Calendar size={12} /> Planejador semanal
         </span>
@@ -265,10 +265,10 @@ function PlanCreateModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-tinta/40 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-xl rounded-xl bg-creme p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="admin-dialog w-full max-w-xl rounded-xl bg-creme p-4 shadow-xl sm:p-6" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="font-display text-2xl font-bold text-tinta">Novo plano</h2>
-          <button onClick={onClose} aria-label="Fechar" className="rounded p-1 text-cinza hover:text-tinta">
+          <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-cinza hover:text-tinta">
             <X size={18} />
           </button>
         </div>
@@ -302,7 +302,7 @@ function PlanCreateModal({
 
         {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
           <button type="button" onClick={submit} disabled={busy} className="btn-primary">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
@@ -333,10 +333,10 @@ function PlanDeleteModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-tinta/40 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-creme p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="admin-dialog w-full max-w-md rounded-xl bg-creme p-4 shadow-xl sm:p-6" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <h2 className="font-display text-xl font-bold text-tinta">Excluir plano</h2>
-          <button onClick={onClose} aria-label="Fechar" className="rounded p-1 text-cinza hover:text-tinta">
+          <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-cinza hover:text-tinta">
             <X size={18} />
           </button>
         </div>
@@ -347,7 +347,7 @@ function PlanDeleteModal({
           Expiradas e PendingPayment não bloqueiam.
         </p>
         {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
           <button type="button" onClick={submit} disabled={busy} className="btn-coral">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -458,14 +458,14 @@ function PlanEditModal({
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-tinta/40 p-4 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-creme p-6 shadow-xl"
+        className="admin-dialog w-full max-w-2xl rounded-xl bg-creme p-4 shadow-xl sm:p-6" role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="font-display text-2xl font-bold text-tinta">
             Editar plano {data?.name ? `· ${data.name}` : ""}
           </h2>
-          <button onClick={onClose} aria-label="Fechar" className="rounded p-1 text-cinza hover:text-tinta">
+          <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-cinza hover:text-tinta">
             <X size={18} />
           </button>
         </div>

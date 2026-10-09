@@ -10,6 +10,7 @@ import PlansPage from "@/pages/PlansPage";
 import LessonsPage from "@/pages/LessonsPage";
 import MetricsPage from "@/pages/MetricsPage";
 import EmailLogsPage from "@/pages/EmailLogsPage";
+import NotificationsPage from "@/pages/NotificationsPage";
 
 export default function App() {
   const location = useLocation();
@@ -91,6 +92,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/notificacoes" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/clientes" replace />} />
       </Routes>
     </AdminLayout>

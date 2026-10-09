@@ -101,7 +101,7 @@ function Field({ label, value, mono, highlight }: { label: string; value: string
   return (
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-wider text-cinza">{label}</p>
-      <p className={`mt-0.5 ${mono ? "font-mono text-xs" : "text-sm font-medium"} ${highlight ? "text-erva" : "text-tinta"}`}>
+      <p className={`mt-0.5 break-all ${mono ? "font-mono text-xs" : "text-sm font-medium"} ${highlight ? "text-erva" : "text-tinta"}`}>
         {value}
       </p>
     </div>

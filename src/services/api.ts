@@ -10,6 +10,7 @@ import type {
   AdminGrantSubscriptionBody, AdminGrantSubscriptionResponse, AdminChangePlanAdminBody,
   AdminLoginHistoryResponse,
   MetricsResponse, AdminEmailLogsResponse, EmailLogsQuery,
+  NotificationRecipient, NotificationRecipientBody, NotificationDeliveryStatus,
 } from "@/types";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "https://localhost:7166") + "/api";
@@ -18,12 +19,16 @@ export const api = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
   withCredentials: false,
+  timeout: 15000,
 });
 
 // Request interceptor — bota o Bearer em toda chamada quando há token salvo.
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = tokenService.getAccessToken();
-  if (token) {
+  if ((config as InternalAxiosRequestConfig & { _retry?: boolean })._retry
+    && config.headers?.Authorization !== `Bearer ${token}`)
+    return Promise.reject(new axios.CanceledError("A sessão mudou antes da nova tentativa."));
+  if (token && config.url !== "/admin/auth/login") {
     config.headers = config.headers ?? {};
     (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
   }
@@ -32,43 +37,50 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 // Refresh inflight tracker — evita N requests paralelas de refresh quando 401
 // estoura em várias chamadas ao mesmo tempo.
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: { refreshToken: string; promise: Promise<string | null> } | null = null;
 
-async function tryRefresh(): Promise<boolean> {
-  if (refreshInFlight) return refreshInFlight;
+async function tryRefresh(): Promise<string | null> {
   const refresh = tokenService.getRefreshToken();
-  if (!refresh) return false;
+  if (!refresh) { tokenService.clear(); return null; }
+  if (refreshInFlight?.refreshToken === refresh) return refreshInFlight.promise;
 
-  refreshInFlight = (async () => {
+  const promise = (async () => {
     try {
-      const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken: refresh });
+      const res = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken: refresh }, { timeout: 10000 });
+      // Logout ou outro login pode acontecer enquanto a API responde.
+      if (tokenService.getRefreshToken() !== refresh) return null;
       const { accessToken, refreshToken } = res.data;
+      if (typeof accessToken !== "string" || !accessToken || typeof refreshToken !== "string" || !refreshToken)
+        return null;
       tokenService.setTokens(accessToken, refreshToken);
-      return true;
-    } catch {
-      tokenService.clear();
-      return false;
-    } finally {
-      refreshInFlight = null;
+      return accessToken;
+    } catch (error) {
+      // Indisponibilidade da API não invalida as credenciais guardadas.
+      if (tokenService.getRefreshToken() === refresh && axios.isAxiosError(error)
+        && (error.response?.status === 400 || error.response?.status === 401))
+        tokenService.clear();
+      return null;
     }
   })();
-
-  return refreshInFlight;
+  const current = { refreshToken: refresh, promise };
+  refreshInFlight = current;
+  try { return await promise; }
+  finally { if (refreshInFlight === current) refreshInFlight = null; }
 }
 
 api.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
-    if (error.response?.status === 401 && original && !original._retry) {
+    if (error.response?.status === 401 && original && original.url !== "/admin/auth/login" && original.url !== "/auth/logout") {
+      // Uma resposta da sessão anterior não pode renovar ou encerrar a atual.
+      if (original.headers?.Authorization !== `Bearer ${tokenService.getAccessToken()}`) return Promise.reject(error);
+      if (original._retry) { tokenService.clear(); return Promise.reject(error); }
       original._retry = true;
-      const ok = await tryRefresh();
-      if (ok) {
-        const newToken = tokenService.getAccessToken();
-        if (newToken) {
-          original.headers = original.headers ?? {};
-          (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
-        }
+      const newToken = await tryRefresh();
+      if (newToken && tokenService.getAccessToken() === newToken) {
+        original.headers = original.headers ?? {};
+        (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
         return api(original);
       }
     }
@@ -240,6 +252,15 @@ export const adminApi = {
       return res.data;
     },
   },
+
+  notificationRecipients: {
+    list: async (): Promise<NotificationRecipient[]> => (await api.get<NotificationRecipient[]>("/admin/notification-recipients")).data,
+    create: async (body: NotificationRecipientBody): Promise<NotificationRecipient> => (await api.post<NotificationRecipient>("/admin/notification-recipients", body)).data,
+    update: async (id: string, body: NotificationRecipientBody): Promise<NotificationRecipient> => (await api.put<NotificationRecipient>(`/admin/notification-recipients/${id}`, body)).data,
+    remove: async (id: string): Promise<void> => { await api.delete(`/admin/notification-recipients/${id}`); },
+  },
+
+  notificationStatus: async (): Promise<NotificationDeliveryStatus> => (await api.get<NotificationDeliveryStatus>("/admin/notification-status")).data,
 
   emailLogs: {
     list: async (q: EmailLogsQuery = {}): Promise<AdminEmailLogsResponse> => {

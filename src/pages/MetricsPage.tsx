@@ -36,7 +36,7 @@ export default function MetricsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Métricas do sistema</h1>
           <p className="mt-1 text-sm text-cinza">
@@ -73,10 +73,10 @@ export default function MetricsPage() {
           <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <BigStat
               icon={DollarSign}
-              label="MRR (Active)"
+              label="Receita recorrente mensal"
               value={`R$ ${formatPrice(data.subscriptions.mrr)}`}
               tone="erva"
-              hint="Soma do MonthlyAmount das assinaturas Active."
+              hint="Assinaturas ativas e vigentes; planos anuais divididos por 12."
             />
             <BigStat
               icon={Sparkles}

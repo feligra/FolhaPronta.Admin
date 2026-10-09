@@ -80,7 +80,7 @@ export default function LessonsPage() {
       </header>
 
       {/* Contadores */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard label="Total" value={total} tone="tinta" />
         <StatCard label="Ativas" value={activeCount} tone="erva" />
         <StatCard label="Em manutenção" value={disabledCount} tone="coral" />
@@ -109,9 +109,9 @@ export default function LessonsPage() {
       ) : (
         <ul className="divide-y divide-tinta/10 overflow-hidden rounded-xl border border-tinta/10 bg-creme">
           {filtered.map((item) => (
-            <li key={item.activityType} className="flex items-center justify-between gap-4 px-4 py-3">
+            <li key={item.activityType} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <p className="truncate font-semibold text-tinta">{item.label}</p>
+                <p className="break-words font-semibold text-tinta">{item.label}</p>
                 <p className="truncate text-[11px] text-cinza">{item.name}</p>
               </div>
               <div className="flex items-center gap-3">

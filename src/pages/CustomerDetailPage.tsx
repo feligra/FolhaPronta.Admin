@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle, ArrowLeft, Ban, BookOpen, CalendarPlus, CheckCircle2, CreditCard,
   Edit3, FileText, Loader2, LogIn, Mail, MapPin, Phone, Repeat, RefreshCw, Send,
-  Sparkles, Trash2, User as UserIcon, Users as UsersIcon, X,
+  Sparkles, Trash2, User as UserIcon, Users as UsersIcon,
 } from "lucide-react";
 import { adminApi } from "@/services/api";
 import type {
@@ -17,6 +17,7 @@ import {
   USER_TYPE_LABEL,
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
+import { AdminDialog } from "@/components/AdminDialog";
 
 type TabKey = "overview" | "subscription" | "payments" | "activities" | "classrooms" | "logins";
 
@@ -44,25 +45,34 @@ export default function CustomerDetailPage() {
   // Modais de edição/exclusão do USUÁRIO (não da sub).
   const [editingUser, setEditingUser] = useState(false);
   const [deletingUser, setDeletingUser] = useState(false);
+  const loadVersion = useRef(0);
+  useEffect(() => () => { loadVersion.current++; }, []);
 
   const load = async () => {
     if (!id) return;
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
       const r = await adminApi.users.detail(id);
-      setData(r);
+      if (version === loadVersion.current) setData(r);
     } catch (err: unknown) {
+      if (version !== loadVersion.current) return;
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar cliente.";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
+  useEffect(() => {
+    setData(null); setTab("overview"); setSubAction(null); setEditingUser(false); setDeletingUser(false);
+    void load();
+    return () => { loadVersion.current++; };
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [id]);
 
   if (loading) {
     return (
@@ -83,13 +93,14 @@ export default function CustomerDetailPage() {
           <div>
             <p className="font-semibold">Não foi possível carregar este cliente.</p>
             <p className="text-sm">{error}</p>
+            <button className="btn-ghost mt-3" onClick={() => void load()}><RefreshCw size={16} /> Tentar novamente</button>
           </div>
         </div>
       </div>
     );
   }
 
-  const { user, currentSubscription, payments, totalActivitiesGenerated, activitiesByType, classrooms } = data;
+  const { user, currentSubscription, payments, totalActivitiesGenerated, activitiesByType, classrooms, recentActivities = [] } = data;
 
   return (
     <div className="space-y-6">
@@ -99,7 +110,7 @@ export default function CustomerDetailPage() {
 
       {/* Header com identidade */}
       <header className="card flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-4">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
           <div className={classNames(
             "flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-md font-display text-xl font-bold",
             user.role === "Admin" ? "bg-coral text-creme" : "bg-tintaSoft-50 text-tinta"
@@ -108,7 +119,7 @@ export default function CustomerDetailPage() {
           </div>
           <div className="min-w-0">
             <h1 className="font-display text-2xl font-bold text-tinta">{user.name}</h1>
-            <p className="text-sm text-cinza">{user.email}</p>
+            <p className="break-all text-sm text-cinza">{user.email}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <StatusPill tone={user.isActive ? "erva" : "coral"}>
                 {user.isActive ? "Ativo" : "Inativo"}
@@ -119,7 +130,7 @@ export default function CustomerDetailPage() {
             </div>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-3 sm:text-right">
+        <div className="flex flex-col items-start gap-3 sm:items-end sm:text-right">
           <div className="text-xs text-cinza">
             <div>Cadastro: <strong className="text-tinta">{formatDate(user.createdAt)}</strong></div>
             <div className="mt-1">Último login: <strong className="text-tinta">{formatDateTime(user.lastLoginAt)}</strong></div>
@@ -199,7 +210,8 @@ export default function CustomerDetailPage() {
             )}
           </Section>
           <Section title="Resumo de uso">
-            <Field label="Atividades geradas" value={String(totalActivitiesGenerated)} />
+            <Field label="PDFs gerados" value={String(totalActivitiesGenerated)} />
+            <Field label="Última geração" value={formatDateTime(recentActivities[0]?.createdAt)} />
             <Field label="Turmas" value={String(classrooms.length)} />
             <Field label="Pagamentos registrados" value={String(payments.length)} />
           </Section>
@@ -216,7 +228,7 @@ export default function CustomerDetailPage() {
                     {currentSubscription.planName ?? "—"}
                   </p>
                   <p className="text-sm text-cinza">
-                    R$ {formatPrice(currentSubscription.monthlyAmount)}/mês
+                    R$ {formatPrice(currentSubscription.monthlyAmount)}/{currentSubscription.billingFrequencyMonths === 12 ? "ano" : "mês"}
                   </p>
                 </div>
                 <StatusPill tone={SUBSCRIPTION_STATUS_TONE[currentSubscription.status]}>
@@ -369,6 +381,7 @@ export default function CustomerDetailPage() {
 
       {tab === "activities" && (
         <Section title={`Atividades geradas (${totalActivitiesGenerated})`}>
+          <p className="text-xs text-cinza">Cada PDF gerado conta uma vez, inclusive arquivos feitos para uma turma. Pré-visualizações e novos downloads do mesmo arquivo não criam outra geração.</p>
           {activitiesByType.length === 0 ? (
             <p className="text-sm text-cinza">Nenhuma atividade gerada ainda.</p>
           ) : (
@@ -381,6 +394,7 @@ export default function CustomerDetailPage() {
               ))}
             </ul>
           )}
+          {recentActivities.length > 0 && <div className="space-y-3 border-t border-tintaSoft-100 pt-4"><h3 className="text-sm font-semibold">Gerações recentes (até 20)</h3><ul className="divide-y divide-tintaSoft-100">{recentActivities.map((activity) => <li key={activity.id} className="py-3"><p className="break-words text-sm font-medium">{activity.title || ACTIVITY_TYPE_LABEL[activity.type] || activity.type}</p><p className="mt-1 text-xs text-cinza">{ACTIVITY_TYPE_LABEL[activity.type] ?? activity.type} · {formatDateTime(activity.createdAt)}{activity.hasAnswerKey ? " · Com gabarito" : ""}</p></li>)}</ul></div>}
         </Section>
       )}
 
@@ -644,24 +658,7 @@ function EmailNotConfirmedBanner({ userId }: { userId: string }) {
 function Modal({
   title, onClose, children,
 }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-tinta/40 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-creme p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="font-display text-xl font-bold text-tinta">{title}</h2>
-          <button onClick={onClose} aria-label="Fechar" className="rounded p-1 text-cinza hover:text-tinta">
-            <X size={18} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+  return <AdminDialog title={title} onClose={onClose}>{children}</AdminDialog>;
 }
 
 /** Carrega planos ATIVOS pra os selects das modais (Conceder/Trocar). */
@@ -732,7 +729,7 @@ function GrantSubscriptionModal({
 
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-primary">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
@@ -794,7 +791,7 @@ function ChangePlanModal({
 
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-primary">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Repeat size={14} />}
@@ -836,7 +833,7 @@ function ExtendSubscriptionModal({
       <label className="label mt-4">Motivo (opcional)</label>
       <textarea className="input min-h-[60px]" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: compensação por incidente" />
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-primary">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CalendarPlus size={14} />}
@@ -901,7 +898,7 @@ function CancelSubscriptionModal({
         </label>
       )}
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-coral">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
@@ -1039,7 +1036,7 @@ function EditUserModal({
 
       {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-primary">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Edit3 size={14} />}
@@ -1108,7 +1105,7 @@ function DeleteUserModal({
 
       {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
         <button type="button" onClick={submit} disabled={busy || !canSubmit} className="btn-coral">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -1171,7 +1168,7 @@ function WeeklyPlanDeleteButton({
             Os PDFs já gerados continuam no storage mas não vão mais ser listados.
           </p>
           {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
-          <div className="mt-5 flex justify-end gap-2">
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setConfirming(false)} className="btn-ghost">
               Voltar
             </button>

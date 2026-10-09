@@ -21,7 +21,8 @@ export default function CustomersPage() {
   const search = params.get("search") ?? "";
   const isActive = params.get("isActive"); // "true" | "false" | null
   const role = params.get("role") ?? ""; // "" | "Admin" | "User"
-  const page = Math.max(1, Number(params.get("page") ?? "1"));
+  const requestedPage = Number(params.get("page") ?? "1");
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
   const [searchInput, setSearchInput] = useState(search);
   const [data, setData] = useState<AdminUsersListResponse | null>(null);
@@ -30,21 +31,28 @@ export default function CustomersPage() {
 
   // Debounce do search box: 300ms — espera o admin parar de digitar antes de
   // bater no backend. Sem isso, cada tecla dispara uma request.
+  const loadVersion = useRef(0);
+  useEffect(() => () => { loadVersion.current++; }, []);
+  useEffect(() => { setSearchInput(search); }, [search]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (searchInput.trim() === search) return;
     debounceRef.current = setTimeout(() => {
-      const next = new URLSearchParams(params);
+      setParams((current) => {
+      const next = new URLSearchParams(current);
       if (searchInput.trim()) next.set("search", searchInput.trim());
       else next.delete("search");
       next.set("page", "1"); // qualquer mudança no filtro volta pra pág 1
-      setParams(next, { replace: true });
+      return next;
+      }, { replace: true });
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]);
+  }, [searchInput, search, setParams]);
 
   const load = async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
@@ -55,14 +63,15 @@ export default function CustomersPage() {
         page,
         pageSize: PAGE_SIZE,
       });
-      setData(r);
+      if (version === loadVersion.current) setData(r);
     } catch (err: unknown) {
+      if (version !== loadVersion.current) return;
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar clientes.";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
@@ -87,14 +96,14 @@ export default function CustomersPage() {
     return {
       total: data.totalCount,
       active: data.items.filter((u) => u.isActive).length,
-      paying: data.items.filter((u) => u.subscriptionStatus === "Active").length,
+      paying: data.items.filter((u) => u.isPaidPlan).length,
       pending: data.items.filter((u) => u.subscriptionStatus === "PendingPayment").length,
     };
   }, [data]);
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Clientes</h1>
           <p className="mt-1 text-sm text-cinza">
@@ -110,8 +119,8 @@ export default function CustomersPage() {
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Total (filtro atual)" value={stats.total} />
         <Stat label="Ativos (página)" value={stats.active} />
-        <Stat label="Pagantes (página)" value={stats.paying} tone="erva" />
-        <Stat label="Pagamento pendente" value={stats.pending} tone="amarelo" />
+        <Stat label="Plano pago vigente (página)" value={stats.paying} tone="erva" />
+        <Stat label="Pagamento pendente (página)" value={stats.pending} tone="amarelo" />
       </section>
 
       <section className="card space-y-4">
@@ -162,7 +171,7 @@ export default function CustomersPage() {
         {data && (
           <>
             {/* Tabela desktop */}
-            <div className="hidden overflow-hidden rounded-md border border-tintaSoft-100 lg:block">
+            <div className="hidden overflow-x-auto rounded-md border border-tintaSoft-100 lg:block">
               <table className="w-full text-sm">
                 <thead className="bg-tintaSoft-50/40 text-left text-[11px] font-semibold uppercase tracking-wider text-cinza">
                   <tr>
@@ -170,6 +179,7 @@ export default function CustomersPage() {
                     <th className="px-4 py-3">Tipo</th>
                     <th className="px-4 py-3">Plano</th>
                     <th className="px-4 py-3">Assinatura</th>
+                    <th className="px-4 py-3">Atividades</th>
                     <th className="px-4 py-3">Cadastro</th>
                     <th className="px-4 py-3">Último login</th>
                     <th className="px-4 py-3 w-8" aria-label="abrir" />
@@ -244,7 +254,9 @@ function Row({ user, onClick }: { user: AdminUserListItem; onClick: () => void }
       </td>
       <td className="px-4 py-3">
         <SubBadge status={user.subscriptionStatus} />
+        {user.isTrialActive && <span className="mt-1 block text-[11px] text-turquesa">Teste grátis ativo</span>}
       </td>
+      <td className="px-4 py-3"><strong>{user.totalActivitiesGenerated ?? 0}</strong><span className="mt-0.5 block whitespace-nowrap text-[11px] text-cinza">{user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</span></td>
       <td className="px-4 py-3 text-xs text-cinza">{formatDate(user.createdAt)}</td>
       <td className="px-4 py-3 text-xs text-cinza">{formatDate(user.lastLoginAt)}</td>
       <td className="px-4 py-3 text-cinza"><ChevronRight size={16} /></td>
@@ -272,6 +284,9 @@ function MobileCard({ user, onClick }: { user: AdminUserListItem; onClick: () =>
           <SubBadge status={user.subscriptionStatus} />
           <span className="text-[10px] text-cinza">{USER_TYPE_LABEL[user.userType] ?? ""}</span>
         </div>
+        {user.isTrialActive && <p className="mt-2 text-xs text-turquesa">Teste grátis ativo até {formatDate(user.trialEndsAt)}</p>}
+        <p className="mt-2 text-xs text-cinza"><strong className="text-tinta">{user.totalActivitiesGenerated ?? 0} atividade(s)</strong> · {user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</p>
+        {!user.emailConfirmed && <p className="mt-1 text-xs text-amarelo-800">E-mail ainda não confirmado</p>}
       </div>
     </div>
   );
@@ -330,7 +345,7 @@ function Paginator({
   const to = Math.min(page * pageSize, totalCount);
 
   return (
-    <div className="flex items-center justify-between gap-3 text-sm text-cinza">
+    <div className="flex flex-col gap-3 text-sm text-cinza sm:flex-row sm:items-center sm:justify-between">
       <span>
         {totalCount === 0 ? "Nenhum resultado" : `${from}–${to} de ${totalCount}`}
       </span>

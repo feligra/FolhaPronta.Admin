@@ -83,6 +83,11 @@ export interface AdminUserListItem {
   lastLoginAt: string | null;
   planSlug: string | null;
   subscriptionStatus: SubscriptionStatus | null;
+  isPaidPlan: boolean;
+  isTrialActive: boolean;
+  trialEndsAt: string | null;
+  totalActivitiesGenerated: number;
+  lastActivityGeneratedAt: string | null;
 }
 
 export interface AdminUsersListResponse {
@@ -137,6 +142,7 @@ export interface AdminSubscription {
   planName: string | null;
   planSlug: string | null;
   monthlyAmount: number;
+  billingFrequencyMonths?: number;
   status: SubscriptionStatus;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
@@ -180,6 +186,7 @@ export interface AdminUserDetail {
   payments: AdminPaymentRecord[];
   totalActivitiesGenerated: number;
   activitiesByType: AdminActivityCount[];
+  recentActivities: { id: string; type: string; title: string; createdAt: string; hasAnswerKey: boolean }[];
   classrooms: AdminClassroom[];
 }
 
@@ -215,6 +222,7 @@ export interface AdminSubscriptionListItem {
   planName: string;
   planSlug: string;
   monthlyAmount: number;
+  billingFrequencyMonths?: number;
   status: SubscriptionStatus;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
@@ -268,6 +276,7 @@ export interface AdminPlanListItem {
   name: string;
   slug: string;
   monthlyPrice: number;
+  billingFrequencyMonths?: number;
   description: string | null;
   isActive: boolean;
   sortOrder: number;
@@ -441,4 +450,27 @@ export interface EmailLogsQuery {
   template?: string;
   page?: number;
   pageSize?: number;
+}
+
+export interface NotificationRecipientBody {
+  email: string;
+  enabled: boolean;
+  customerRegistered: boolean;
+  paymentApproved: boolean;
+  activityReported: boolean;
+  contactMessage: boolean;
+}
+
+export interface NotificationRecipient extends NotificationRecipientBody {
+  id: string;
+  createdAt: string;
+}
+
+export interface NotificationDeliveryStatus {
+  smtpConfigured: boolean;
+  pending: number;
+  retrying: number;
+  delivered: number;
+  cancelled: number;
+  oldestPendingAt: string | null;
 }

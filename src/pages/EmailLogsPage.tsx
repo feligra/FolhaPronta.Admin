@@ -40,6 +40,10 @@ const TEMPLATE_OPTIONS = [
   { value: "Welcome", label: "Boas-vindas" },
   { value: "PasswordReset", label: "Redefinição de senha" },
   { value: "OrganizationInvite", label: "Convite de organização" },
+  { value: "CustomerRegistered", label: "Cliente cadastrado" },
+  { value: "PaymentApproved", label: "Pagamento aprovado" },
+  { value: "ActivityReported", label: "Report de atividade" },
+  { value: "ContactMessage", label: "Mensagem de contato" },
 ];
 
 export default function EmailLogsPage() {
@@ -47,7 +51,8 @@ export default function EmailLogsPage() {
   const search = params.get("search") ?? "";
   const status = (params.get("status") as EmailLogStatus | null) ?? "";
   const template = params.get("template") ?? "";
-  const page = Math.max(1, Number(params.get("page") ?? "1"));
+  const requestedPage = Number(params.get("page") ?? "1");
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
   const [searchInput, setSearchInput] = useState(search);
   const [data, setData] = useState<AdminEmailLogsResponse | null>(null);
@@ -55,21 +60,28 @@ export default function EmailLogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const loadVersion = useRef(0);
+  useEffect(() => () => { loadVersion.current++; }, []);
+  useEffect(() => { setSearchInput(search); }, [search]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (searchInput.trim() === search) return;
     debounceRef.current = setTimeout(() => {
-      const next = new URLSearchParams(params);
+      setParams((current) => {
+      const next = new URLSearchParams(current);
       if (searchInput.trim()) next.set("search", searchInput.trim());
       else next.delete("search");
       next.set("page", "1");
-      setParams(next, { replace: true });
+      return next;
+      }, { replace: true });
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]);
+  }, [searchInput, search, setParams]);
 
   const load = async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
@@ -80,14 +92,15 @@ export default function EmailLogsPage() {
         page,
         pageSize: PAGE_SIZE,
       });
-      setData(r);
+      if (version === loadVersion.current) setData(r);
     } catch (err: unknown) {
+      if (version !== loadVersion.current) return;
       setError(
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar logs."
       );
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
@@ -109,7 +122,7 @@ export default function EmailLogsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Logs de email</h1>
           <p className="mt-1 text-sm text-cinza">
@@ -166,7 +179,7 @@ export default function EmailLogsPage() {
         {data && (
           <>
             {/* Tabela desktop */}
-            <div className="hidden overflow-hidden rounded-md border border-tintaSoft-100 lg:block">
+            <div className="hidden overflow-x-auto rounded-md border border-tintaSoft-100 lg:block">
               <table className="w-full text-sm">
                 <thead className="bg-tintaSoft-50/40 text-left text-[11px] font-semibold uppercase tracking-wider text-cinza">
                   <tr>
@@ -261,7 +274,7 @@ function MobileCard({ log }: { log: AdminEmailLogItem }) {
         </div>
         <StatusPill tone={STATUS_TONE[log.status]}>{STATUS_LABEL[log.status]}</StatusPill>
       </div>
-      <div className="flex items-center justify-between text-xs text-cinza">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-cinza">
         <span>{log.templateName}</span>
         <span>{formatDateTime(log.sentAt ?? log.createdAt)}</span>
       </div>
@@ -292,7 +305,7 @@ function Paginator({
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
   return (
-    <div className="flex items-center justify-between gap-3 text-sm text-cinza">
+    <div className="flex flex-col gap-3 text-sm text-cinza sm:flex-row sm:items-center sm:justify-between">
       <span>{totalCount === 0 ? "Nenhum resultado" : `${from}–${to} de ${totalCount}`}</span>
       <div className="flex items-center gap-2">
         <button

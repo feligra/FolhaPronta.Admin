@@ -5,6 +5,7 @@ import type { AdminUser } from "@/types";
 const ACCESS_KEY = "fp_admin_access";
 const REFRESH_KEY = "fp_admin_refresh";
 const USER_KEY = "fp_admin_user";
+export const ADMIN_SESSION_EXPIRED_EVENT = "fp-admin-session-expired";
 
 export const tokenService = {
   getAccessToken: (): string | null => {
@@ -35,6 +36,7 @@ export const tokenService = {
       localStorage.removeItem(REFRESH_KEY);
       localStorage.removeItem(USER_KEY);
     } catch { /* noop */ }
+    window.dispatchEvent(new Event(ADMIN_SESSION_EXPIRED_EVENT));
   },
   isAuthenticated: (): boolean => {
     try {

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { authApi } from "@/services/api";
-import { tokenService } from "@/services/tokenService";
+import { ADMIN_SESSION_EXPIRED_EVENT, tokenService } from "@/services/tokenService";
 import type { AdminUser, LoginRequest } from "@/types";
 
 interface AuthContextType {
@@ -37,7 +37,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (e.key?.startsWith("fp_admin_")) refreshAuth();
     };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(ADMIN_SESSION_EXPIRED_EVENT, refreshAuth);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(ADMIN_SESSION_EXPIRED_EVENT, refreshAuth);
+    };
   }, [refreshAuth]);
 
   const login = useCallback(async (creds: LoginRequest) => {

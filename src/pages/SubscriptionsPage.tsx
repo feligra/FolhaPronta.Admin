@@ -29,7 +29,8 @@ export default function SubscriptionsPage() {
   const [params, setParams] = useSearchParams();
   const search = params.get("search") ?? "";
   const status = (params.get("status") as SubscriptionStatus | null) ?? "";
-  const page = Math.max(1, Number(params.get("page") ?? "1"));
+  const requestedPage = Number(params.get("page") ?? "1");
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
   const [searchInput, setSearchInput] = useState(search);
   const [data, setData] = useState<AdminSubscriptionsListResponse | null>(null);
@@ -40,21 +41,28 @@ export default function SubscriptionsPage() {
   const [modal, setModal] = useState<{ kind: "cancel" | "extend"; sub: AdminSubscriptionListItem } | null>(null);
 
   // Debounce do search (igual CustomersPage).
+  const loadVersion = useRef(0);
+  useEffect(() => () => { loadVersion.current++; }, []);
+  useEffect(() => { setSearchInput(search); }, [search]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (searchInput.trim() === search) return;
     debounceRef.current = setTimeout(() => {
-      const next = new URLSearchParams(params);
+      setParams((current) => {
+      const next = new URLSearchParams(current);
       if (searchInput.trim()) next.set("search", searchInput.trim());
       else next.delete("search");
       next.set("page", "1");
-      setParams(next, { replace: true });
+      return next;
+      }, { replace: true });
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]);
+  }, [searchInput, search, setParams]);
 
   const load = async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
@@ -64,14 +72,15 @@ export default function SubscriptionsPage() {
         page,
         pageSize: PAGE_SIZE,
       });
-      setData(r);
+      if (version === loadVersion.current) setData(r);
     } catch (err: unknown) {
+      if (version !== loadVersion.current) return;
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar assinaturas.";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
@@ -103,7 +112,7 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Assinaturas</h1>
           <p className="mt-1 text-sm text-cinza">
@@ -160,7 +169,7 @@ export default function SubscriptionsPage() {
         {data && (
           <>
             {/* Tabela desktop */}
-            <div className="hidden overflow-hidden rounded-md border border-tintaSoft-100 lg:block">
+            <div className="hidden overflow-x-auto rounded-md border border-tintaSoft-100 lg:block">
               <table className="w-full text-sm">
                 <thead className="bg-tintaSoft-50/40 text-left text-[11px] font-semibold uppercase tracking-wider text-cinza">
                   <tr>
@@ -301,6 +310,7 @@ function Row({
 function MobileCard({
   sub, onCancel, onExtend,
 }: { sub: AdminSubscriptionListItem; onCancel: () => void; onExtend: () => void }) {
+  const canCancel = sub.status !== "Expired" && (sub.status !== "Cancelled" || sub.hasAccess);
   return (
     <div className="card space-y-2">
       <div className="flex items-start justify-between gap-2">
@@ -312,7 +322,7 @@ function MobileCard({
           {SUBSCRIPTION_STATUS_LABEL[sub.status]}
         </StatusPill>
       </div>
-      <div className="flex items-center justify-between text-xs text-cinza">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-cinza">
         <span>{sub.planName} · R$ {formatPrice(sub.monthlyAmount)}/mês</span>
         <span>até {formatDate(sub.currentPeriodEnd)}</span>
       </div>
@@ -320,7 +330,7 @@ function MobileCard({
         <button onClick={onExtend} className="btn-ghost flex-1 h-8 text-xs">
           <CalendarPlus size={12} /> Estender
         </button>
-        <button onClick={onCancel} className="btn-ghost flex-1 h-8 text-xs">
+        <button onClick={onCancel} disabled={!canCancel} className="btn-ghost flex-1 h-8 text-xs disabled:cursor-not-allowed disabled:opacity-40">
           <Ban size={12} /> Cancelar
         </button>
       </div>
@@ -346,7 +356,7 @@ function Paginator({
   const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalCount);
   return (
-    <div className="flex items-center justify-between gap-3 text-sm text-cinza">
+    <div className="flex flex-col gap-3 text-sm text-cinza sm:flex-row sm:items-center sm:justify-between">
       <span>{totalCount === 0 ? "Nenhum resultado" : `${from}–${to} de ${totalCount}`}</span>
       <div className="flex items-center gap-2">
         <button
@@ -423,7 +433,7 @@ function CancelModal({
 
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-coral">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
@@ -505,7 +515,7 @@ function ExtendModal({
 
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
 
-      <div className="mt-5 flex justify-end gap-2">
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-primary">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CalendarPlus size={14} />}
@@ -532,12 +542,12 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-creme p-6 shadow-xl"
+        className="admin-dialog w-full max-w-md rounded-xl bg-creme p-4 shadow-xl sm:p-6" role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <h2 className="font-display text-xl font-bold text-tinta">{title}</h2>
-          <button onClick={onClose} aria-label="Fechar" className="rounded p-1 text-cinza hover:text-tinta">
+          <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-cinza hover:text-tinta">
             <X size={18} />
           </button>
         </div>

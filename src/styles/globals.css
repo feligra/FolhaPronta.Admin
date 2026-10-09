@@ -99,6 +99,7 @@
     height: 100%;
   }
   body {
+    min-width: 320px;
     background: rgb(var(--color-creme));
     color: rgb(var(--color-tinta));
     font-family: theme(fontFamily.sans);
@@ -136,7 +137,7 @@
   .btn-ghost:hover { background: rgb(var(--color-tintaSoft-50)); }
 
   .input {
-    @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
+    @apply w-full min-w-0 rounded-md border px-3 py-2 text-sm outline-none transition;
     background: rgb(var(--color-creme));
     color: rgb(var(--color-tinta));
     border-color: rgb(var(--color-tinta) / 0.15);
@@ -150,7 +151,7 @@
   }
 
   .card {
-    @apply rounded-[10px] p-5;
+    @apply min-w-0 rounded-[10px] p-4 sm:p-5;
     background: rgb(var(--color-creme));
     border: 1px solid rgb(var(--color-tinta) / 0.12);
   }
@@ -161,4 +162,25 @@
   .pill-erva    { background: rgb(var(--color-erva)); color: rgb(var(--color-creme)); }
   .pill-coral   { background: rgb(var(--color-coral-100)); color: rgb(var(--color-coral-800)); }
   .pill-amarelo { background: rgb(var(--color-amarelo-100)); color: rgb(var(--color-amarelo-900)); }
+}
+
+.admin-dialog {
+  max-height: calc(100dvh - 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.admin-content h1, .admin-content h2 { overflow-wrap: anywhere; }
+
+@media (max-width: 639px) {
+  .admin-content h1 { font-size: 1.75rem; overflow-wrap: anywhere; }
+  .admin-content header { flex-wrap: wrap; }
+  .admin-content header > div { min-width: 0; }
+  .admin-content .input { min-height: 44px; font-size: 16px; }
+  .btn-primary, .btn-ghost, .btn-coral { min-height: 44px; }
+}
+
+button:focus-visible, a:focus-visible {
+  outline: 2px solid rgb(var(--color-coral));
+  outline-offset: 3px;
 }

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench,
+  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -21,6 +21,7 @@ const NAV: NavItem[] = [
   { to: "/planos", label: "Planos", icon: Package },
   { to: "/licoes", label: "Lições", icon: Wrench },
   { to: "/emails", label: "Logs de email", icon: Mail },
+  { to: "/notificacoes", label: "Notificações", icon: Bell },
   { to: "/health", label: "Saúde do painel", icon: Activity },
 ];
 
@@ -29,9 +30,37 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const drawer = useRef<HTMLElement>(null);
 
   // Fecha o drawer ao navegar entre páginas.
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    drawer.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMobileOpen(false); return; }
+      if (event.key !== "Tab") return;
+      const items = drawer.current?.querySelectorAll<HTMLElement>("a[href],button:not([disabled])");
+      if (!items?.length) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const handleResize = () => { if (desktop.matches) setMobileOpen(false); };
+    desktop.addEventListener("change", handleResize);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      desktop.removeEventListener("change", handleResize);
+      document.removeEventListener("keydown", handleKey);
+      menuButton.current?.focus();
+    };
+  }, [mobileOpen]);
 
   const handleLogout = async () => {
     await logout();
@@ -42,10 +71,10 @@ export function Sidebar() {
     <>
       {/* Mobile header */}
       <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-tintaSoft-100 bg-creme px-4 lg:hidden">
-        <button onClick={() => setMobileOpen(true)} aria-label="Abrir menu" className="p-2">
+        <button ref={menuButton} onClick={() => setMobileOpen(true)} aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="admin-sidebar" className="grid h-11 w-11 place-items-center rounded-md">
           <Menu size={20} />
         </button>
-        <div className="font-display text-lg font-bold text-tinta">FolhaPronta · Admin</div>
+        <div className="font-display text-base font-bold text-tinta sm:text-lg">FolhaPronta · Admin</div>
         <div className="w-9" />
       </header>
 
@@ -57,8 +86,11 @@ export function Sidebar() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-tintaSoft-100 bg-creme transition-transform lg:static lg:translate-x-0 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        ref={drawer}
+        id="admin-sidebar"
+        aria-label="Menu administrativo"
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(288px,85vw)] shrink-0 flex-col border-r border-tintaSoft-100 bg-creme transition-transform lg:visible lg:static lg:w-[260px] lg:translate-x-0 ${
+          mobileOpen ? "visible translate-x-0" : "invisible -translate-x-full"
         }`}
       >
         {/* Logo */}
@@ -70,7 +102,7 @@ export function Sidebar() {
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Fechar menu"
-            className="p-1 lg:hidden"
+            className="grid h-11 w-11 place-items-center rounded-md lg:hidden"
           >
             <X size={18} />
           </button>
@@ -100,7 +132,7 @@ export function Sidebar() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${
+                  `flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition ${
                     isActive
                       ? "bg-coral-50 text-coral-800"
                       : "text-tinta hover:bg-tintaSoft-50"
