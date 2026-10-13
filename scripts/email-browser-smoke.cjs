@@ -3,13 +3,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_BASE_URL || 'http://127.0.0.1:3013';
-const output = path.resolve('../output/revisao-correcoes/admin');
+const output = path.resolve(process.env.TEST_OUTPUT_DIR || '../output/revisao-correcoes/admin');
+const previewDirectory = path.resolve(process.env.FOLHAPRONTA_EMAIL_PREVIEW_DIR || '../output/revisao-correcoes/emails');
 const templates = [
-  {id:'classic',name:'Clássico',description:'Cabeçalho roxo e cartão claro para mensagens do dia a dia.',accentColor:'#65469b'},
-  {id:'spotlight',name:'Destaque',description:'Faixa azul e título amplo para novidades e promoções.',accentColor:'#165f92'},
-  {id:'letter',name:'Carta',description:'Uma mensagem acolhedora, com aparência de carta pessoal.',accentColor:'#81613d'},
-  {id:'bulletin',name:'Comunicado',description:'Linhas limpas e destaque verde para avisos objetivos.',accentColor:'#236b55'},
-  {id:'celebration',name:'Celebração',description:'Detalhes em coral para boas notícias e conquistas.',accentColor:'#a94258'},
+  {id:'classic',name:'Clássico',description:'Papel creme e detalhes turquesa, como nas mensagens de contato do site.',accentColor:'#54A0A8',stamp:'Carta aberta'},
+  {id:'spotlight',name:'Destaque',description:'Selo coral e mensagem em destaque para novidades e promoções.',accentColor:'#F76B5C',stamp:'Em destaque'},
+  {id:'letter',name:'Carta',description:'Detalhes lilás e uma apresentação acolhedora para mensagens pessoais.',accentColor:'#A685C9',stamp:'Carta da equipe'},
+  {id:'bulletin',name:'Comunicado',description:'Selo verde e quadro de mensagem para avisos importantes.',accentColor:'#648A68',stamp:'Comunicado'},
+  {id:'celebration',name:'Celebração',description:'Selo amarelo e detalhes festivos para compartilhar boas notícias.',accentColor:'#FFC93C',stamp:'Boas notícias'},
 ];
 const options = {templates,categories:[{id:'promotion',label:'Promoção'},{id:'notice',label:'Aviso'},{id:'news',label:'Novidade'},{id:'misc',label:'Outros'}],maxRecipients:50,maxSubjectLength:160,maxBodyLength:12000,sendingConfigured:true};
 const now = new Date().toISOString();
@@ -20,13 +21,14 @@ const plan = {id:'plan-test',name:'FolhaPronta Completo',slug:'pro',monthlyPrice
 const escape = value => value.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 function previewHtml(data) {
   const template = templates.find(item=>item.id===data.templateId);
-  const file = path.resolve(`../output/revisao-correcoes/emails/${data.templateId}.html`);
+  const file = path.join(previewDirectory,`${data.templateId}.html`);
+  if (process.env.FOLHAPRONTA_EMAIL_PREVIEW_DIR) assert(fs.existsSync(file), `Prévia real do servidor ausente: ${file}`);
   if (fs.existsSync(file)) {
     const original = fs.readFileSync(file,'utf8');
-    return original.replace(/Novidade(?=<\/p>)/,escape(options.categories.find(item=>item.id===data.category).label))
+    return original.replace(/(<p style="margin:0 0 12px;[^>]*>)[\s\S]*?(<\/p>)/,`$1${escape(options.categories.find(item=>item.id===data.category).label)}$2`)
       .replace(/<title>[\s\S]*?<\/title>/,`<title>${escape(data.subject)}</title>`)
       .replace(/(<h1[^>]*>)[\s\S]*?(<\/h1>)/,`$1${escape(data.subject)}$2`)
-      .replace(/(<td style="padding:28px;font-size:16px[^>]*>)[\s\S]*?(<\/td>)/,`$1${escape(data.body).replace(/\n/g,'<br>')}$2`);
+      .replace(/(<div class="message"[^>]*>)[\s\S]*?(<\/div>)/,`$1${escape(data.body).replace(/\n/g,'<br>')}$2`);
   }
   return `<html><body style="margin:0"><h1 style="color:${template.accentColor}">${escape(data.subject)}</h1><p>${escape(data.body).replace(/\n/g,'<br>')}</p></body></html>`;
 }
@@ -43,7 +45,7 @@ async function main() {
   });
   const sends=[],grants=[],previews=[],unexpected=[],errors=[];
   const batches=new Map();
-  let failNextSend=false, failStatus=false, statusSent=false, failGrantAfterCommit=false, grantCommitted=false;
+  let failNextSend=false, failStatus=false, statusSent=false, partialDelivery=false, failGrantAfterCommit=false, grantCommitted=false;
   let grantWait = null;
   await context.route('**/api/**',async route=>{
     const req=route.request(),url=new URL(req.url()),method=req.method();
@@ -54,12 +56,14 @@ async function main() {
     if(url.pathname==='/api/admin/emails/preview'){
       const data=req.postDataJSON(); previews.push(data);
       if(data.subject==='Resposta antiga')await new Promise(r=>setTimeout(r,1000));
+      if(data.body===Array(12).fill('https://spam.example.com').join('\n'))return respond({error:{message:'A mensagem contém links em excesso ou muito repetidos. Reduza os links antes de enviar.'}},400);
       return respond({subject:data.subject,html:previewHtml(data)});
     }
     if(url.pathname==='/api/admin/emails/send'){
       const data=req.postDataJSON();sends.push(data);
       await new Promise(r=>setTimeout(r,150));
       if(failNextSend){failNextSend=false;return respond({error:{message:'Falha temporária simulada'}},503);}
+      if(data.recipients.includes('temporario@mailinator.com'))return respond({error:{message:'E-mails temporários ou descartáveis não são aceitos. Use um e-mail permanente.'}},400);
       if(!batches.has(data.requestId))batches.set(data.requestId,data);
       return respond(result(data));
     }
@@ -79,7 +83,10 @@ async function main() {
     unexpected.push(`${method} ${url.pathname}`);
     return respond({error:{message:'Rota não simulada'}},404);
   });
-  function result(data){return {requestId:data.requestId,total:data.recipients.length,queued:statusSent?0:data.recipients.length,sent:statusSent?data.recipients.length:0,failed:0,results:data.recipients.map(email=>({email,status:statusSent?'sent':'queued',retrying:false,nextAttemptAt:now}))};}
+  function result(data){
+    if(partialDelivery)return {requestId:data.requestId,total:data.recipients.length,queued:0,sent:1,failed:data.recipients.length-1,results:data.recipients.map((email,index)=>({email,status:index===0?'sent':'failed',retrying:index!==0,nextAttemptAt:index===0?null:end,error:index===0?null:'A última tentativa falhou. O envio permanece na fila para nova tentativa; consulte o histórico de e-mails.'}))};
+    return {requestId:data.requestId,total:data.recipients.length,queued:statusSent?0:data.recipients.length,sent:statusSent?data.recipients.length:0,failed:0,results:data.recipients.map(email=>({email,status:statusSent?'sent':'queued',retrying:false,nextAttemptAt:now}))};
+  }
   await context.route('**/*',route=>{
     const url=new URL(route.request().url());
     if(url.pathname.startsWith('/api/'))return route.fallback();
@@ -119,13 +126,50 @@ async function main() {
       await waitPreview('Mensagem atualizada');await page.waitForTimeout(800);await waitPreview('Mensagem atualizada');
     });
     await check('Modelos e categoria independentes, desktop e celular',async()=>{
-      for(const template of templates){await page.getByRole('radio',{name:new RegExp(template.name)}).check();await waitPreview('Mensagem atualizada');}
+      for(const template of templates){
+        await page.getByRole('radio',{name:new RegExp(`^${template.name} `)}).check();await waitPreview('Mensagem atualizada');
+        if(process.env.FOLHAPRONTA_EMAIL_PREVIEW_DIR){
+          await page.frameLocator('iframe').getByText(new RegExp(template.stamp)).waitFor();
+          assert.equal(await page.frameLocator('iframe').locator('body').evaluate(body=>getComputedStyle(body).backgroundColor),'rgb(255, 233, 203)');
+          assert(await page.frameLocator('iframe').getByText('CNPJ 66.099.913/0001-15',{exact:false}).isVisible());
+        }
+      }
       await page.getByLabel('Tipo de mensagem').selectOption('promotion');await waitPreview('Mensagem atualizada');
       await fits();await page.screenshot({path:path.join(output,'enviar-email-desktop.png'),fullPage:true});
-      for(const width of [390,320]){await page.setViewportSize({width,height:850});await page.getByRole('button',{name:'Prévia no celular'}).click();await fits();}
+      for(const width of [390,320]){
+        await page.setViewportSize({width,height:850});await page.getByRole('button',{name:'Prévia no celular'}).click();await fits();
+        assert(await page.frameLocator('iframe').locator('html').evaluate(element=>element.scrollWidth <= innerWidth+1),'E-mail cabe na prévia mobile sem rolagem horizontal');
+      }
       await page.evaluate(()=>window.scrollTo(0,0));
       await page.screenshot({path:path.join(output,'enviar-email-mobile.png'),fullPage:true});
       await page.setViewportSize({width:1440,height:1000});
+    });
+    if(process.env.FOLHAPRONTA_EMAIL_PREVIEW_DIR) await check('Cinco modelos reais legíveis no celular com assunto e palavras longas',async()=>{
+      const previewPage=await context.newPage();
+      try{
+        await previewPage.setViewportSize({width:320,height:850});
+        for(const template of templates){
+          await previewPage.setContent(previewHtml({templateId:template.id,category:'notice',subject:'Comunicado '+ 'A'.repeat(145),body:'Olá!\n\n'+ 'Aprendizagem'.repeat(60)+'\n\nCom carinho,\nEquipe FolhaPronta'}));
+          assert(await previewPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`Modelo ${template.id} sem overflow com palavras longas`);
+          assert.equal(await previewPage.locator('h1').innerText(),'Comunicado '+ 'A'.repeat(145));
+          assert.equal(await previewPage.locator('.message').innerText(),'Olá!\n\n'+ 'Aprendizagem'.repeat(60)+'\n\nCom carinho,\nEquipe FolhaPronta');
+          await previewPage.setContent(fs.readFileSync(path.join(previewDirectory,`${template.id}.html`),'utf8'));
+          await previewPage.screenshot({path:path.join(output,`${template.id}-mobile.png`),fullPage:true});
+          await previewPage.setViewportSize({width:800,height:1000});
+          await previewPage.screenshot({path:path.join(output,`${template.id}-desktop.png`),fullPage:true});
+          await previewPage.setViewportSize({width:320,height:850});
+        }
+      }finally{await previewPage.close();}
+    });
+    await check('Bloqueio antiabuso da prévia impede envio e permite corrigir a mensagem',async()=>{
+      await page.getByLabel('Corpo do e-mail').fill(Array(12).fill('https://spam.example.com').join('\n'));
+      await page.getByRole('alert').getByText('A mensagem contém links em excesso ou muito repetidos. Reduza os links antes de enviar.').waitFor();
+      assert(await page.getByRole('button',{name:'Enviar para 2 destinatários'}).isDisabled());
+      assert.equal(await page.locator('iframe[title="Conteúdo do e-mail"]').count(),0);
+      assert.equal(sends.length,0);
+      await page.getByLabel('Corpo do e-mail').fill('Olá!\n<b>Texto literal</b>\nSegundo parágrafo.');
+      await waitPreview('Mensagem atualizada');
+      assert(await page.getByRole('button',{name:'Enviar para 2 destinatários'}).isEnabled());
     });
     await check('Envio duplo bloqueado e conteúdo enviado igual ao da prévia',async()=>{
       await page.getByRole('button',{name:'Enviar para 2 destinatários'}).evaluate(button=>{button.click();button.click();});
@@ -133,6 +177,16 @@ async function main() {
       assert.equal(sends.length,1);assert.equal(sends[0].recipients.length,2);assert.equal(sends[0].templateId,'celebration');assert.equal(sends[0].category,'promotion');
       assert.equal(sends[0].subject,'Mensagem atualizada');assert.equal(sends[0].body,'Olá!\n<b>Texto literal</b>\nSegundo parágrafo.');
       assert.match(sends[0].requestId,/^[0-9a-f-]{36}$/);
+    });
+    await check('Falha em uma cópia mantém o outro destinatário enviado e mostra a nova tentativa',async()=>{
+      partialDelivery=true;await page.getByRole('button',{name:'Atualizar envio'}).click();
+      const status=page.getByRole('region',{name:'Andamento do envio'});
+      await status.getByText('Nova tentativa agendada',{exact:true}).waitFor();
+      assert.equal(await status.getByText('Enviado',{exact:true}).count(),1);
+      assert.equal(await status.getByText('Nova tentativa agendada',{exact:true}).count(),1);
+      assert.equal(await status.getByText('Próxima tentativa:',{exact:false}).count(),1);
+      assert.equal(sends.length,1);
+      partialDelivery=false;
     });
     await check('Recarregar consulta o mesmo envio sem repetir POST',async()=>{
       statusSent=true;await page.reload();
@@ -154,6 +208,24 @@ async function main() {
       failStatus=true;await page.reload();await page.getByRole('alert').getByText('Consulta temporariamente indisponível').waitFor();
       assert.equal(await page.getByRole('button',{name:'Voltar à composição'}).count(),0);assert.equal(sends.length,3);
       failStatus=false;await page.getByRole('button',{name:'Atualizar envio'}).click();await page.getByRole('region',{name:'Andamento do envio'}).getByText('tres@example.com',{exact:true}).waitFor();
+    });
+    await check('Destinatário temporário rejeitado libera correção sem apagar a mensagem',async()=>{
+      await page.getByRole('button',{name:'Escrever outra mensagem'}).click();
+      await page.getByLabel('Assunto',{exact:true}).fill('Mensagem legítima');
+      await page.getByLabel('Corpo do e-mail').fill('Aviso sobre as próximas atividades da turma.');
+      await page.getByLabel('E-mails dos destinatários').fill('temporario@mailinator.com; permanente@example.com');
+      await waitPreview('Mensagem legítima');
+      await page.getByRole('button',{name:'Enviar para 2 destinatários'}).click();
+      await page.getByRole('alert').getByText('E-mails temporários ou descartáveis não são aceitos. Use um e-mail permanente.').waitFor();
+      assert.equal(await page.getByRole('region',{name:'Andamento do envio'}).count(),0);
+      assert.equal(await page.getByLabel('Assunto',{exact:true}).inputValue(),'Mensagem legítima');
+      assert.equal(batches.size,2);
+      assert.equal(await page.evaluate(()=>sessionStorage.getItem('fp_admin_email_request_admin-email')),null);
+      await page.getByLabel('E-mails dos destinatários').fill('permanente@example.com');
+      await page.getByRole('button',{name:'Enviar para 1 destinatário',exact:true}).click();
+      await page.getByRole('region',{name:'Andamento do envio'}).getByText('permanente@example.com',{exact:true}).waitFor();
+      assert.equal(batches.size,3);assert.equal(sends.length,5);
+      assert.notEqual(sends.at(-1).requestId,sends.at(-2).requestId);
     });
     await check('Concessão começa sem email e desmarcar remove mensagem do payload',async()=>{
       const dialog=await openGrant();const checkbox=dialog.getByLabel('Enviar e-mail ao cliente',{exact:false});

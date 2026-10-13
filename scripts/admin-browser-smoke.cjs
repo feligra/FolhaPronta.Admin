@@ -34,6 +34,7 @@ async function main() {
   let refreshes = 0;
   let releaseRefresh;
   const oldRequestsUsingNewLogin = [];
+  const emailLogSearches = [];
   const unexpected = [];
   await context.route("**/api/**", async (route) => {
     const request = route.request();
@@ -93,7 +94,10 @@ async function main() {
     else if (pathname === "/api/admin/plans/plan-1") body = plan;
     else if (pathname === "/api/admin/activities") body = { items: [{ activityType: 1, name: "ConnectDots", label: "Ligue os pontos", disabled: false }, { activityType: 2, name: "NumberSequence", label: "Sequência de números", disabled: true }], total: 2, active: 1, disabled: 1 };
     else if (pathname === "/api/admin/metrics") body = metrics;
-    else if (pathname === "/api/admin/email-logs") body = paged(logs, 50);
+    else if (pathname === "/api/admin/email-logs") {
+      emailLogSearches.push(new URL(request.url()).searchParams.get("search"));
+      body = paged(logs, 50);
+    }
     else if (pathname === "/api/admin/health") body = { status: "ok", adminId: "admin-1", email: "admin@example.com", timestamp: now };
     else { unexpected.push(`${method} ${pathname}`); return route.fulfill({ status: 404, headers, json: { error: { message: "API mock não configurada" } } }); }
     return route.fulfill({ status, headers, contentType: "application/json", body: JSON.stringify(body) });
@@ -161,6 +165,18 @@ async function main() {
       await page.getByRole("button", { name: "Atualizar", exact: true }).click();
       await status.getByText("Envio configurado", { exact: true }).waitFor();
       assert.equal(await status.locator("dd").nth(0).textContent(), "0");
+      assert(await status.getByText("Enviados:", { exact: true }).isVisible());
+      assert.equal(await status.getByText("Entregues:", { exact: true }).count(), 0);
+    });
+    await check("Histórico da cópia abre com filtro do destinatário", async () => {
+      const card = page.locator("article").filter({ has: page.getByRole("heading", { name: "dono@example.com", exact: true }) });
+      await card.getByRole("link", { name: "Ver envios deste destinatário", exact: true }).click();
+      await page.getByRole("heading", { name: "Logs de email", exact: true }).waitFor();
+      assert.equal(new URL(page.url()).searchParams.get("search"), "dono@example.com");
+      assert.equal(await page.getByPlaceholder("Buscar por destinatário ou assunto…").inputValue(), "dono@example.com");
+      await page.getByText("Erro simulado para validar visualização", { exact: true }).last().waitFor();
+      assert(emailLogSearches.includes("dono@example.com"));
+      await open("/notificacoes", "Notificações");
     });
     await check("E-mail duplicado mostra erro e permite corrigir", async () => {
       await page.getByRole("button", { name: "Adicionar e-mail", exact: true }).click();

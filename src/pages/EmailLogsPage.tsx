@@ -46,6 +46,7 @@ const TEMPLATE_OPTIONS = [
   { value: "ContactMessage", label: "Mensagem de contato" },
   { value: "AdminMessage", label: "Mensagem enviada pelo admin" },
   { value: "SubscriptionGranted", label: "Assinatura concedida" },
+  { value: "WeeklyPlanReminder", label: "Lembrete do Planejador" },
 ];
 
 export default function EmailLogsPage() {
