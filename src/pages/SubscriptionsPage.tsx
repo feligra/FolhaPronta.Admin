@@ -72,7 +72,17 @@ export default function SubscriptionsPage() {
         page,
         pageSize: PAGE_SIZE,
       });
-      if (version === loadVersion.current) setData(r);
+      if (version !== loadVersion.current) return;
+      const lastPage = Math.max(1, r.totalPages);
+      if (page > lastPage) {
+        setParams((current) => {
+          const next = new URLSearchParams(current);
+          next.set("page", String(lastPage));
+          return next;
+        }, { replace: true });
+        return;
+      }
+      setData(r);
     } catch (err: unknown) {
       if (version !== loadVersion.current) return;
       const msg =
@@ -116,7 +126,7 @@ export default function SubscriptionsPage() {
         <div>
           <h1 className="font-display text-3xl font-bold text-tinta">Assinaturas</h1>
           <p className="mt-1 text-sm text-cinza">
-            Todas as assinaturas do sistema. Cancele, estenda ou pesquise por cliente.
+            Uma assinatura atual por cliente. Cancele, estenda ou pesquise pelo nome ou e-mail.
           </p>
         </div>
         <button onClick={load} className="btn-ghost" title="Recarregar">
@@ -126,7 +136,7 @@ export default function SubscriptionsPage() {
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Total (filtro atual)" value={stats.total} />
+        <Stat label="Clientes (filtro atual)" value={stats.total} />
         <Stat label="Ativas (página)" value={stats.active} tone="erva" />
         <Stat label="Pendentes (página)" value={stats.pending} tone="amarelo" />
         <Stat label="Canceladas (página)" value={stats.cancelled} tone="coral" />
@@ -138,6 +148,7 @@ export default function SubscriptionsPage() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-cinza" />
             <input
               type="search"
+              aria-label="Buscar cliente por nome ou e-mail"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Buscar por nome ou e-mail do cliente…"
@@ -145,6 +156,7 @@ export default function SubscriptionsPage() {
             />
           </div>
           <select
+            aria-label="Status da assinatura atual"
             value={status}
             onChange={(e) => updateFilter("status", e.target.value || null)}
             className="input sm:w-[220px]"
@@ -259,6 +271,7 @@ function Row({
   // Cancelar só faz sentido em quem tem MP ativo ou ainda dá acesso —
   // botão fica disabled em Expired/já-Cancelled-sem-vigência.
   const canCancel = sub.status !== "Expired" && (sub.status !== "Cancelled" || sub.hasAccess);
+  const canExtend = ["Active", "Cancelled", "Expired"].includes(sub.status);
   return (
     <tr className="border-t border-tintaSoft-100">
       <td className="px-4 py-3">
@@ -287,8 +300,9 @@ function Row({
           <button
             type="button"
             onClick={onExtend}
-            className="rounded-md border border-tintaSoft-100 p-1.5 text-cinza hover:border-erva hover:text-erva"
-            title="Estender vigência (cortesia)"
+            disabled={!canExtend}
+            className="rounded-md border border-tintaSoft-100 p-1.5 text-cinza hover:border-erva hover:text-erva disabled:cursor-not-allowed disabled:opacity-40"
+            title={canExtend ? "Estender vigência (cortesia)" : "Estenda uma assinatura ativa, cancelada ou expirada"}
           >
             <CalendarPlus size={14} />
           </button>
@@ -311,6 +325,7 @@ function MobileCard({
   sub, onCancel, onExtend,
 }: { sub: AdminSubscriptionListItem; onCancel: () => void; onExtend: () => void }) {
   const canCancel = sub.status !== "Expired" && (sub.status !== "Cancelled" || sub.hasAccess);
+  const canExtend = ["Active", "Cancelled", "Expired"].includes(sub.status);
   return (
     <div className="card space-y-2">
       <div className="flex items-start justify-between gap-2">
@@ -327,7 +342,12 @@ function MobileCard({
         <span>até {formatDate(sub.currentPeriodEnd)}</span>
       </div>
       <div className="flex gap-2 pt-1">
-        <button onClick={onExtend} className="btn-ghost flex-1 h-8 text-xs">
+        <button
+          onClick={onExtend}
+          disabled={!canExtend}
+          title={canExtend ? "Estender vigência (cortesia)" : "Estenda uma assinatura ativa, cancelada ou expirada"}
+          className="btn-ghost flex-1 h-8 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+        >
           <CalendarPlus size={12} /> Estender
         </button>
         <button onClick={onCancel} disabled={!canCancel} className="btn-ghost flex-1 h-8 text-xs disabled:cursor-not-allowed disabled:opacity-40">
@@ -361,6 +381,7 @@ function Paginator({
       <div className="flex items-center gap-2">
         <button
           type="button"
+          aria-label="Página anterior"
           disabled={page <= 1 || loading}
           onClick={() => onChange(page - 1)}
           className="btn-ghost h-8 px-2"
@@ -370,6 +391,7 @@ function Paginator({
         </span>
         <button
           type="button"
+          aria-label="Próxima página"
           disabled={page >= totalPages || loading}
           onClick={() => onChange(page + 1)}
           className="btn-ghost h-8 px-2"
@@ -474,7 +496,7 @@ function ExtendModal({
       <p className="text-sm text-tinta/80">
         Estender a vigência de <strong>{sub.userName}</strong> ({sub.planName}).
         Vigência atual: <strong>{formatDate(sub.currentPeriodEnd)}</strong>.
-        Se a sub estiver Cancelled/Expired, será reativada como Active.
+        Assinaturas canceladas ou expiradas serão reativadas.
       </p>
 
       <label className="label mt-4">Dias de cortesia</label>
