@@ -1,46 +1,72 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, Check, CheckCircle2, Clock3, Eye, Loader2, Mail, Monitor, Plus, RefreshCw, Send, Smartphone } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, Eye, Loader2, Mail, Monitor, Plus, RefreshCw, Send, Smartphone } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminApi } from "@/services/api";
 import type { AdminEmailBatchResult, AdminEmailDraft, AdminEmailOptions, AdminEmailPreview, AdminSendEmailBody } from "@/types";
 import { classNames, formatDateTime } from "@/utils/format";
 import { emailErrorMessage, parseEmailRecipients } from "@/utils/email";
 
-function savedRequest(key: string) {
-  try { return sessionStorage.getItem(key); } catch { return null; }
+function savedRequest(key: string): { id: string | null; attempt: AdminSendEmailBody | null } {
+  const empty = { id: null, attempt: null };
+  const isId = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return empty;
+    // Older sessions and confirmed deliveries store only their tracking ID.
+    if (isId(raw)) return { id: raw, attempt: null };
+    const value = JSON.parse(raw) as Partial<AdminSendEmailBody> | null;
+    if (!value || !isId(value.requestId) || typeof value.templateId !== "string" || typeof value.category !== "string"
+      || typeof value.subject !== "string" || value.subject.length > 160 || typeof value.body !== "string" || value.body.length > 12000
+      || !Array.isArray(value.recipients) || value.recipients.length < 1 || value.recipients.length > 50
+      || value.recipients.some(email => typeof email !== "string" || email.length > 254)) return empty;
+    const attempt: AdminSendEmailBody = { requestId: value.requestId, templateId: value.templateId, category: value.category,
+      subject: value.subject, body: value.body, recipients: value.recipients };
+    return { id: attempt.requestId, attempt };
+  } catch { return empty; }
 }
 
 export default function SendEmailPage() {
   const { user } = useAuth();
   const storageKey = `fp_admin_email_request_${user?.id ?? ""}`;
+  const [restoredRequest] = useState(() => savedRequest(storageKey));
   const [options, setOptions] = useState<AdminEmailOptions | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
-  const [templateId, setTemplateId] = useState("");
-  const [category, setCategory] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [addresses, setAddresses] = useState("");
+  const [templateId, setTemplateId] = useState(restoredRequest.attempt?.templateId ?? "");
+  const [category, setCategory] = useState(restoredRequest.attempt?.category ?? "");
+  const [subject, setSubject] = useState(restoredRequest.attempt?.subject ?? "");
+  const [body, setBody] = useState(restoredRequest.attempt?.body ?? "");
+  const [addresses, setAddresses] = useState(restoredRequest.attempt?.recipients.join("\n") ?? "");
   const [preview, setPreview] = useState<(AdminEmailPreview & { key: string }) | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewVersion, setPreviewVersion] = useState(0);
   const [mobilePreview, setMobilePreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(() => savedRequest(storageKey));
-  const [attempt, setAttempt] = useState<AdminSendEmailBody | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(restoredRequest.id);
+  const [attempt, setAttempt] = useState<AdminSendEmailBody | null>(restoredRequest.attempt);
   const [result, setResult] = useState<AdminEmailBatchResult | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusNotFound, setStatusNotFound] = useState(false);
   const mutation = useRef(false);
+  const unconfirmedAttempt = useRef<AdminSendEmailBody | null>(restoredRequest.attempt);
   const statusMutation = useRef(false);
+  const confirmedVersion = useRef(0);
   const mounted = useRef(true);
   const optionsVersion = useRef(0);
   const activeId = useRef(requestId);
   activeId.current = requestId;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; optionsVersion.current++; }; }, []);
+
+  const remember = useCallback((id: string | null, pending?: AdminSendEmailBody) => {
+    activeId.current = id; setRequestId(id);
+    try {
+      if (id) sessionStorage.setItem(storageKey, pending ? JSON.stringify(pending) : id);
+      else sessionStorage.removeItem(storageKey);
+    } catch { /* In-memory recovery still works when session storage is unavailable. */ }
+  }, [storageKey]);
 
   const loadOptions = useCallback(async () => {
     const version = ++optionsVersion.current;
@@ -65,7 +91,9 @@ export default function SendEmailPage() {
   const contentValid = !!options && hasContent && !/[\r\n]/.test(draft.subject)
     && draft.subject.length <= options.maxSubjectLength && draft.body.length <= options.maxBodyLength;
   const currentPreview = preview?.key === draftKey ? preview : null;
-  const locked = busy || !!requestId;
+  // Keep tracking a registered batch without locking the next composition.
+  // An uncertain response still locks editing so a retry uses the same payload.
+  const locked = busy || (!!requestId && !result);
 
   useEffect(() => {
     setPreviewError(null);
@@ -83,15 +111,29 @@ export default function SendEmailPage() {
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
   }, [draft, draftKey, contentValid, previewVersion]);
 
+  const acceptResult = useCallback((data: AdminEmailBatchResult) => {
+    confirmedVersion.current++;
+    setResult(data); setStatusError(null); setStatusNotFound(false);
+    if (unconfirmedAttempt.current?.requestId === data.requestId) {
+      unconfirmedAttempt.current = null;
+      setAttempt(null); setError(null);
+      remember(data.requestId); // Discard the stored message once receipt is confirmed.
+      // Preserve the message/template for reuse, but require an explicit new
+      // recipient selection before another send, including after recovery.
+      setAddresses("");
+    }
+  }, [remember]);
+
   const refreshStatus = useCallback(async () => {
     const id = activeId.current;
     if (!id || statusMutation.current) return;
+    const version = confirmedVersion.current;
     statusMutation.current = true; setStatusLoading(true);
     try {
       const data = await adminApi.emails.status(id);
-      if (mounted.current && activeId.current === id) { setResult(data); setStatusError(null); setStatusNotFound(false); setError(null); }
+      if (mounted.current && activeId.current === id && confirmedVersion.current === version) acceptResult(data);
     } catch (reason) {
-      if (mounted.current && activeId.current === id) {
+      if (mounted.current && activeId.current === id && confirmedVersion.current === version) {
         setStatusNotFound((reason as { response?: { status?: number } })?.response?.status === 404);
         setStatusError(emailErrorMessage(reason, "Não foi possível consultar este envio. Consulte novamente antes de enviar outra cópia."));
       }
@@ -99,7 +141,7 @@ export default function SendEmailPage() {
       statusMutation.current = false;
       if (mounted.current && activeId.current === id) setStatusLoading(false);
     }
-  }, []);
+  }, [acceptResult]);
 
   const shouldPoll = !!requestId && !busy && (!result || result.queued > 0 || result.results.some((item) => item.retrying));
   useEffect(() => {
@@ -114,22 +156,22 @@ export default function SendEmailPage() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [shouldPoll, requestId, refreshStatus]);
 
-  const remember = (id: string | null) => {
-    activeId.current = id; setRequestId(id);
-    try { if (id) sessionStorage.setItem(storageKey, id); else sessionStorage.removeItem(storageKey); } catch { /* The in-memory request remains available. */ }
-  };
-
   const enqueue = async (payload: AdminSendEmailBody) => {
     if (mutation.current) return;
     mutation.current = true; setBusy(true); setError(null); setStatusError(null);
-    setAttempt(payload); remember(payload.requestId);
+    unconfirmedAttempt.current = payload;
+    setResult(null); setStatusNotFound(false); setStatusLoading(false);
+    setAttempt(payload); remember(payload.requestId, payload);
     try {
       const data = await adminApi.emails.send(payload);
-      if (mounted.current) setResult(data);
+      // A concurrent status lookup may already have confirmed this request.
+      // Its newer result wins over the response from a delayed retry.
+      if (mounted.current && activeId.current === payload.requestId && unconfirmedAttempt.current?.requestId === payload.requestId)
+        acceptResult(data);
     } catch (reason) {
-      if (!mounted.current) return;
+      if (!mounted.current || activeId.current !== payload.requestId || unconfirmedAttempt.current?.requestId !== payload.requestId) return;
       const status = (reason as { response?: { status?: number } })?.response?.status;
-      if (status === 400 || status === 422) { remember(null); setAttempt(null); }
+      if (status === 400 || status === 422) { unconfirmedAttempt.current = null; remember(null); setAttempt(null); }
       setError(emailErrorMessage(reason, "A confirmação do envio não chegou. Consulte o andamento ou tente registrar novamente; a mesma solicitação será reutilizada para evitar cópias."));
     } finally { mutation.current = false; if (mounted.current) setBusy(false); }
   };
@@ -144,6 +186,7 @@ export default function SendEmailPage() {
 
   const newMessage = () => {
     if (mutation.current) return;
+    unconfirmedAttempt.current = null;
     remember(null); setAttempt(null); setResult(null); setError(null); setStatusError(null);
     setSubject(""); setBody(""); setAddresses(""); setPreview(null); setStatusLoading(false); setStatusNotFound(false);
   };
@@ -210,7 +253,8 @@ export default function SendEmailPage() {
             {parsed.invalid.length > 0 && <p role="alert" className="mt-2 break-all text-sm text-coral-800">Confira estes endereços: {parsed.invalid.join(", ")}</p>}
             {parsed.recipients.length > options.maxRecipients && <p role="alert" className="mt-2 text-sm text-coral-800">Use no máximo {options.maxRecipients} destinatários neste envio.</p>}
           </div>
-          <button type="submit" className="btn-primary w-full sm:w-auto" disabled={locked || !contentValid || !currentPreview || !!previewError || parsed.invalid.length > 0 || parsed.recipients.length === 0 || parsed.recipients.length > options.maxRecipients}>{busy ? <Loader2 size={16} className="animate-spin" /> : result ? <Check size={16} /> : <Send size={16} />}{busy ? "Registrando envio…" : result ? "Envio registrado" : `Enviar para ${parsed.recipients.length} ${parsed.recipients.length === 1 ? "destinatário" : "destinatários"}`}</button>
+          {result && !busy && <p role="status" className="rounded-xl border border-erva/25 bg-erva/10 p-3 text-sm">Envio registrado. Você já pode ajustar a mensagem e informar os destinatários do próximo envio.</p>}
+          <button type="submit" className="btn-primary w-full sm:w-auto" disabled={locked || !contentValid || !currentPreview || !!previewError || parsed.invalid.length > 0 || parsed.recipients.length === 0 || parsed.recipients.length > options.maxRecipients}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}{busy ? "Registrando envio…" : `Enviar para ${parsed.recipients.length} ${parsed.recipients.length === 1 ? "destinatário" : "destinatários"}`}</button>
         </fieldset>
 
         <section className="card min-w-0 space-y-4 self-start xl:sticky xl:top-4" aria-label="Prévia do e-mail">

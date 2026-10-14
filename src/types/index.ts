@@ -258,8 +258,7 @@ export interface SubscriptionListQuery {
 //   4. Cliente front (web): activities.ts ActivityCatalog + ActivityIcon mapping
 //   5. ESTE ARQUIVO: ALL_ACTIVITY_TYPES + ACTIVITY_TYPE_LABEL no admin
 //   6. PNG do ícone em /icons/activities + opcionalmente PNG_SLUGS
-// Sem o passo 5 a atividade fica invisível na matriz "Plano × Atividade"
-// — admin não consegue habilitar ela em nenhum plano.
+// Sem o passo 5 a atividade pode ficar ausente dos filtros e seletores do admin.
 export const ALL_ACTIVITY_TYPES = [
   "Labyrinth", "ConnectDots", "Syllable", "WordSearch", "WritingSounding",
   "NameFigure", "SymbolHunt", "VisionScreening", "Handwriting", "Coloring",
@@ -267,7 +266,7 @@ export const ALL_ACTIVITY_TYPES = [
   "Crossword", "LogicPattern", "LogicOddOneOut", "LogicClassify",
   "LogicCauseEffect", "LogicSudoku", "ShapeArithmetic", "MatchColors",
   "GeographyFlags", "ColorNaming", "Bingo", "CountSticks", "Adedonha",
-  "TimeClock",
+  "TimeClock", "BeforeAfter", "CompareNumbers", "BodySafety", "CountBlocks",
 ] as const;
 export type ActivityTypeName = (typeof ALL_ACTIVITY_TYPES)[number];
 
@@ -277,6 +276,8 @@ export interface AdminPlanListItem {
   slug: string;
   monthlyPrice: number;
   billingFrequencyMonths?: number;
+  /** Promoção de 50% somente no primeiro mês de novos assinantes elegíveis. */
+  firstMonthDiscountEnabled: boolean;
   description: string | null;
   isActive: boolean;
   sortOrder: number;
@@ -315,6 +316,8 @@ export interface AdminPlanDetail {
   name: string;
   slug: string;
   monthlyPrice: number;
+  billingFrequencyMonths?: number;
+  firstMonthDiscountEnabled: boolean;
   description: string | null;
   featuresJson: string | null;
   isActive: boolean;
@@ -335,6 +338,7 @@ export interface AdminUpdatePlanBody {
   isActive?: boolean;
   sortOrder?: number;
   includesWeeklyPlanner?: boolean;
+  firstMonthDiscountEnabled?: boolean;
 }
 
 export interface AdminCreatePlanBody {
@@ -346,6 +350,7 @@ export interface AdminCreatePlanBody {
   isActive?: boolean;
   sortOrder?: number;
   includesWeeklyPlanner?: boolean;
+  firstMonthDiscountEnabled?: boolean;
 }
 
 export interface AdminCreatePlanResponse {

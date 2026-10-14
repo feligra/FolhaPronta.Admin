@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, Calendar, CheckCircle2, Edit3, Loader2, Package, Plus,
   RefreshCw, Settings2, ToggleLeft, ToggleRight, Trash2, X,
@@ -22,28 +22,31 @@ export default function PlansPage() {
   const [data, setData] = useState<AdminPlansListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadVersion = useRef(0);
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<AdminPlanListItem | null>(null);
 
   const load = async () => {
+    const requestVersion = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
       const r = await adminApi.plans.list(true);
-      setData(r);
+      if (requestVersion === loadVersion.current) setData(r);
     } catch (err: unknown) {
+      if (requestVersion !== loadVersion.current) return;
       setError(
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar planos."
       );
     } finally {
-      setLoading(false);
+      if (requestVersion === loadVersion.current) setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); return () => { loadVersion.current++; }; }, []);
 
   const handleDelete = async (plan: AdminPlanListItem) => {
     try {
@@ -167,6 +170,9 @@ function PlanCard({
   plan: AdminPlanListItem;
   onEdit: () => void; onDelete: () => void;
 }) {
+  const annual = planBillingFrequency(plan.slug, plan.billingFrequencyMonths) === 12;
+  const discountEnabled = !!plan.firstMonthDiscountEnabled
+    && !discountUnavailableReason(plan.slug, plan.monthlyPrice, plan.billingFrequencyMonths);
   return (
     <article className="card flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
@@ -177,7 +183,7 @@ function PlanCard({
           </div>
           <p className="mt-1 font-display text-3xl font-bold text-coral">
             R$ {formatPrice(plan.monthlyPrice)}
-            <span className="ml-1 text-sm font-normal text-cinza">/mês</span>
+            <span className="ml-1 text-sm font-normal text-cinza">/{annual ? "ano" : "mês"}</span>
           </p>
           {plan.description && <p className="mt-1 text-sm text-tinta/70">{plan.description}</p>}
         </div>
@@ -185,6 +191,12 @@ function PlanCard({
           {plan.isActive ? "Ativo" : "Inativo"}
         </StatusPill>
       </div>
+
+      {discountEnabled ? <div className="rounded-xl border border-coral/25 bg-coral-50/40 p-3 text-sm">
+        <p className="font-semibold text-coral-800">50% de desconto no primeiro mês</p>
+        <p className="mt-1">R$ {formatPrice(plan.monthlyPrice / 2)} no 1º mês. Depois, R$ {formatPrice(plan.monthlyPrice)}/mês.</p>
+        <p className="mt-1 text-xs text-cinza">Uma única vez, para novos assinantes. {plan.isActive ? "Oferta exibida nas páginas públicas." : "A oferta será exibida quando o plano estiver ativo."}</p>
+      </div> : <p className="text-xs text-cinza">Sem promoção de primeiro mês.</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-tintaSoft-100 p-3">
         <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-cinza">
@@ -221,6 +233,7 @@ function PlanCreateModal({
   const [slug, setSlug] = useState("");
   const [price, setPrice] = useState("0");
   const [description, setDescription] = useState("");
+  const [firstMonthDiscountEnabled, setFirstMonthDiscountEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -254,6 +267,7 @@ function PlanCreateModal({
         slug: slug.trim().toLowerCase(),
         monthlyPrice: numericPrice,
         description: description || undefined,
+        firstMonthDiscountEnabled: firstMonthDiscountEnabled && !discountUnavailableReason(slug, numericPrice),
       };
       const res = await adminApi.plans.create(body);
       onCreated(res.id);
@@ -290,7 +304,7 @@ function PlanCreateModal({
               placeholder="ex.: premium"
             />
           </Field>
-          <Field label="Preço mensal (R$)">
+          <Field label={planBillingFrequency(slug) === 12 ? "Preço anual (R$)" : "Preço mensal (R$)"}>
             <input type="number" step="0.01" min="0" className="input" value={price} onChange={(e) => setPrice(e.target.value)} />
           </Field>
           <div className="sm:col-span-2">
@@ -298,6 +312,11 @@ function PlanCreateModal({
               <textarea className="input min-h-[60px]" value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
           </div>
+        </div>
+
+        <div className="mt-4">
+          <FirstMonthDiscountControl checked={firstMonthDiscountEnabled} onChange={setFirstMonthDiscountEnabled}
+            slug={slug} price={Number(price.replace(",", "."))} disabled={busy} />
         </div>
 
         {err && <div className="mt-3 rounded-md bg-coral-50 p-3 text-sm text-coral-800">{err}</div>}
@@ -375,6 +394,7 @@ function PlanEditModal({
   const [isActive, setIsActive] = useState(true);
   const [sortOrder, setSortOrder] = useState(0);
   const [includesWeeklyPlanner, setIncludesWeeklyPlanner] = useState(false);
+  const [firstMonthDiscountEnabled, setFirstMonthDiscountEnabled] = useState(false);
   // Features: editor textarea com 1 linha = 1 bullet. Convertido pra JSON array
   // no save. Stored como string JSON em `featuresJson` no banco.
   const [features, setFeatures] = useState("");
@@ -394,6 +414,7 @@ function PlanEditModal({
         setIsActive(d.isActive);
         setSortOrder(d.sortOrder);
         setIncludesWeeklyPlanner(d.includesWeeklyPlanner);
+        setFirstMonthDiscountEnabled(!!d.firstMonthDiscountEnabled);
         setFeatures(featuresJsonToLines(d.featuresJson));
       } catch (err: unknown) {
         if (!cancelled) {
@@ -437,6 +458,8 @@ function PlanEditModal({
       if (isActive !== data.isActive) updates.isActive = isActive;
       if (sortOrder !== data.sortOrder) updates.sortOrder = sortOrder;
       if (includesWeeklyPlanner !== data.includesWeeklyPlanner) updates.includesWeeklyPlanner = includesWeeklyPlanner;
+      const discountEnabled = firstMonthDiscountEnabled && !discountUnavailableReason(data.slug, numericPrice, data.billingFrequencyMonths);
+      if (discountEnabled !== !!data.firstMonthDiscountEnabled) updates.firstMonthDiscountEnabled = discountEnabled;
       const newFeaturesJson = linesToFeaturesJson(features);
       if (newFeaturesJson !== (data.featuresJson ?? null)) updates.featuresJson = newFeaturesJson;
 
@@ -493,7 +516,7 @@ function PlanEditModal({
               <Field label="Slug (não editável)">
                 <input className="input opacity-60" value={data.slug} disabled />
               </Field>
-              <Field label="Preço mensal (R$)">
+              <Field label={planBillingFrequency(data.slug, data.billingFrequencyMonths) === 12 ? "Preço anual (R$)" : "Preço mensal (R$)"}>
                 <input
                   type="number"
                   step="0.01"
@@ -535,6 +558,11 @@ function PlanEditModal({
                   Cada linha vira um item com check verde. Linhas em branco são ignoradas.
                   Salvo como JSON array no banco (<code>featuresJson</code>).
                 </p>
+              </div>
+
+              <div className="sm:col-span-2">
+                <FirstMonthDiscountControl checked={firstMonthDiscountEnabled} onChange={setFirstMonthDiscountEnabled}
+                  slug={data.slug} price={Number(price.replace(",", "."))} billingFrequencyMonths={data.billingFrequencyMonths} disabled={busy} />
               </div>
 
               {/* Toggles em <div> (não <label>): button-em-label causa double-fire
@@ -615,11 +643,46 @@ function PlanEditModal({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="label">{label}</label>
+    <label className="block">
+      <span className="label">{label}</span>
       {children}
-    </div>
+    </label>
   );
+}
+
+function planBillingFrequency(slug: string, billingFrequencyMonths?: number): number {
+  const normalizedSlug = slug.trim().toLowerCase();
+  return billingFrequencyMonths ?? (normalizedSlug === "anual" || normalizedSlug.endsWith("-anual") ? 12 : 1);
+}
+
+function discountUnavailableReason(slug: string, price: number, billingFrequencyMonths?: number): string | null {
+  const normalizedSlug = slug.trim().toLowerCase();
+  const frequency = planBillingFrequency(slug, billingFrequencyMonths);
+  if (frequency !== 1) return "Disponível somente para planos mensais. Planos anuais não recebem esta promoção.";
+  if (normalizedSlug === "trial" || normalizedSlug === "free") return "Esta promoção não se aplica a planos de teste ou gratuitos.";
+  if (!Number.isFinite(price) || price < 0.02) return "Defina um preço mensal de pelo menos R$ 0,02 para disponibilizar a promoção.";
+  return null;
+}
+
+function FirstMonthDiscountControl({ checked, onChange, slug, price, billingFrequencyMonths, disabled = false }: {
+  checked: boolean; onChange: (value: boolean) => void; slug: string; price: number; billingFrequencyMonths?: number; disabled?: boolean;
+}) {
+  const hintId = useId();
+  const unavailable = discountUnavailableReason(slug, price, billingFrequencyMonths);
+  return <section className="rounded-xl border border-coral/25 bg-coral-50/40 p-4">
+    <label className={classNames("flex items-start gap-3", disabled || unavailable ? "cursor-default" : "cursor-pointer")}>
+      <input type="checkbox" checked={checked && !unavailable} onChange={event => onChange(event.target.checked)}
+        disabled={disabled || !!unavailable} aria-describedby={hintId} className="mt-0.5 h-5 w-5 shrink-0 accent-[#c84638]" />
+      <span className="text-sm font-semibold">50% de desconto no primeiro mês</span>
+    </label>
+    <div id={hintId} className="mt-3 space-y-2 text-sm">
+      {unavailable ? <p className="text-cinza">{unavailable}</p> : <p>
+        Primeiro mês: <strong>R$ {formatPrice(price / 2)}</strong>. A partir do 2º mês: <strong>R$ {formatPrice(price)}/mês</strong>.
+      </p>}
+      <p className="text-xs leading-relaxed text-cinza">Desconto único para novos assinantes elegíveis. Renovações e assinaturas existentes continuam no preço normal.</p>
+      <p className="text-xs leading-relaxed text-cinza">Quando ativada, a promoção aparece nas páginas públicas enquanto o plano estiver ativo.</p>
+    </div>
+  </section>;
 }
 
 // `featuresJson` no banco é JSON array de strings. UI usa textarea com 1 linha

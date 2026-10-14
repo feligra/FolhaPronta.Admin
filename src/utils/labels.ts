@@ -81,4 +81,8 @@ export const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   CountSticks: "Contar pauzinhos",
   Adedonha: "Adedonha",
   TimeClock: "Lendo as horas",
+  BeforeAfter: "Antes e depois",
+  CompareNumbers: "Maior, menor ou igual",
+  BodySafety: "Meu corpo é meu",
+  CountBlocks: "Conte os blocos",
 };
