@@ -214,7 +214,7 @@ export default function CustomerDetailPage() {
             )}
           </Section>
           <Section title="Resumo de uso">
-            <Field label="PDFs gerados" value={String(totalActivitiesGenerated)} />
+            <Field label="Atividades geradas" value={String(totalActivitiesGenerated)} />
             <Field label="Última geração" value={formatDateTime(recentActivities[0]?.createdAt)} />
             <Field label="Turmas" value={String(classrooms.length)} />
             <Field label="Pagamentos registrados" value={String(payments.length)} />

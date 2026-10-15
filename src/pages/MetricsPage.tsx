@@ -94,7 +94,7 @@ export default function MetricsPage() {
             />
             <BigStat
               icon={FileText}
-              label="PDFs gerados (30d)"
+              label="Atividades geradas (30d)"
               value={data.activities.last30Days}
               tone="lavanda"
               hint={`${data.activities.totalGenerated} desde sempre.`}

@@ -85,4 +85,5 @@ export const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   CompareNumbers: "Maior, menor ou igual",
   BodySafety: "Meu corpo é meu",
   CountBlocks: "Conte os blocos",
+  SecretCode: "Código secreto",
 };

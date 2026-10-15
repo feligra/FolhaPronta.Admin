@@ -70,7 +70,7 @@ export default function LessonsPage() {
           <h1 className="font-display text-3xl font-bold text-tinta">Lições</h1>
           <p className="mt-1 text-sm text-cinza">
             Ative ou desative lições. Desativar coloca a lição em manutenção: ela some do
-            site como gerável, sai do plano semanal e não conta no total de atividades.
+            site como gerável, sai do plano semanal e não conta nas atividades disponíveis. Os contadores públicos atualizam em até 5 minutos.
           </p>
         </div>
         <button onClick={load} className="btn-ghost" title="Recarregar" disabled={loading}>
@@ -81,8 +81,8 @@ export default function LessonsPage() {
 
       {/* Contadores */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatCard label="Total" value={total} tone="tinta" />
-        <StatCard label="Ativas" value={activeCount} tone="erva" />
+        <StatCard label="Total do catálogo" value={total} tone="tinta" />
+        <StatCard label="Disponíveis" value={activeCount} tone="erva" />
         <StatCard label="Em manutenção" value={disabledCount} tone="coral" />
       </div>
 
