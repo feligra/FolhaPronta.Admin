@@ -8,7 +8,7 @@ import type {
   AdminActivitiesListResponse,
   AdminCreatePlanBody, AdminCreatePlanResponse,
   AdminGrantSubscriptionBody, AdminGrantSubscriptionResponse, AdminChangePlanAdminBody,
-  AdminLoginHistoryResponse,
+  AdminLoginHistoryResponse, AdminConfirmEmailResponse,
   MetricsResponse, AdminEmailLogsResponse, EmailLogsQuery,
   NotificationRecipient, NotificationRecipientBody, NotificationDeliveryStatus,
   AdminEmailOptions, AdminEmailDraft, AdminEmailPreview, AdminSendEmailBody, AdminEmailBatchResult,
@@ -154,6 +154,10 @@ export const adminApi = {
     },
     resendEmailConfirmation: async (id: string): Promise<void> => {
       await api.post(`/admin/users/${id}/resend-confirmation`);
+    },
+    confirmEmail: async (id: string, email: string): Promise<AdminConfirmEmailResponse> => {
+      const res = await api.post<AdminConfirmEmailResponse>(`/admin/users/${id}/confirm-email`, { email });
+      return res.data;
     },
     grantSubscription: async (id: string, body: AdminGrantSubscriptionBody): Promise<AdminGrantSubscriptionResponse> => {
       const res = await api.post<AdminGrantSubscriptionResponse>(`/admin/users/${id}/grant-subscription`, body);

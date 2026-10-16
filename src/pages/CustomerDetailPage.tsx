@@ -20,6 +20,7 @@ import {
 import { StatusPill } from "@/components/StatusPill";
 import { AdminDialog } from "@/components/AdminDialog";
 import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
+import { TrialStatus } from "@/components/TrialStatus";
 import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
 
 type TabKey = "overview" | "subscription" | "payments" | "activities" | "classrooms" | "logins";
@@ -41,6 +42,11 @@ export default function CustomerDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("overview");
   const [grantResult, setGrantResult] = useState<AdminGrantSubscriptionResponse | null>(null);
+  const [confirmingEmail, setConfirmingEmail] = useState(false);
+  const [confirmationNotice, setConfirmationNotice] = useState<{ error: boolean; message: string } | null>(null);
+  const confirmingEmailRef = useRef(false);
+  const currentUserId = useRef(id);
+  currentUserId.current = id;
 
   // Modal state pra ações de assinatura. Só uma aberta por vez.
   type SubAction = { kind: "grant" | "change" | "cancel" | "extend" } | null;
@@ -54,7 +60,7 @@ export default function CustomerDetailPage() {
   useEffect(() => () => { loadVersion.current++; }, []);
 
   const load = async (background = false) => {
-    if (!id || (background && activeLoads.current > 0)) return;
+    if (!id || (background && (activeLoads.current > 0 || confirmingEmailRef.current))) return;
     activeLoads.current++;
     const version = ++loadVersion.current;
     if (!background) {
@@ -76,8 +82,41 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const confirmCurrentEmail = async () => {
+    if (!id || !data || confirmingEmailRef.current) return;
+    const userId = id;
+    const email = data.user.email;
+    confirmingEmailRef.current = true;
+    setConfirmingEmail(true);
+    setConfirmationNotice(null);
+    // Descarta consultas iniciadas antes da alteração persistida.
+    loadVersion.current++;
+    try {
+      const result = await adminApi.users.confirmEmail(userId, email);
+      if (currentUserId.current !== userId) return;
+      if (!result.emailConfirmed) throw new Error("Confirmação não registrada.");
+      setConfirmationNotice({ error: false, message: result.alreadyConfirmed
+        ? "O e-mail já estava confirmado no cadastro."
+        : "E-mail marcado como confirmado." });
+      await load();
+    } catch (err: unknown) {
+      if (currentUserId.current !== userId) return;
+      const response = (err as { response?: { status?: number; data?: { error?: { message?: string } } } })?.response;
+      setConfirmationNotice({ error: true, message: response?.data?.error?.message
+        ?? "Não foi possível confirmar o e-mail. Atualize os dados e tente novamente." });
+      // Uma troca de endereço ou de situação da conta exige consultar o cadastro atual.
+      if (response?.status === 409) await load();
+    } finally {
+      if (currentUserId.current === userId) {
+        confirmingEmailRef.current = false;
+        setConfirmingEmail(false);
+      }
+    }
+  };
+
   useEffect(() => {
     setData(null); setTab("overview"); setSubAction(null); setEditingUser(false); setDeletingUser(false); setGrantResult(null);
+    setConfirmationNotice(null); setConfirmingEmail(false); confirmingEmailRef.current = false;
     void load();
     return () => { loadVersion.current++; };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
@@ -96,6 +135,7 @@ export default function CustomerDetailPage() {
     return (
       <div className="space-y-4">
         {grantResult && <GrantResultNotice result={grantResult} />}
+        {confirmationNotice && <EmailConfirmationNotice {...confirmationNotice} />}
         <Link to="/clientes" className="inline-flex items-center gap-1 text-sm text-cinza hover:text-tinta">
           <ArrowLeft size={14} /> Voltar
         </Link>
@@ -116,6 +156,7 @@ export default function CustomerDetailPage() {
   return (
     <div className="space-y-6">
       {grantResult && <GrantResultNotice result={grantResult} />}
+      {confirmationNotice && <EmailConfirmationNotice {...confirmationNotice} />}
       <Link to="/clientes" className="inline-flex items-center gap-1 text-sm text-cinza hover:text-tinta">
         <ArrowLeft size={14} /> Clientes
       </Link>
@@ -140,6 +181,7 @@ export default function CustomerDetailPage() {
               <StatusPill tone="neutral">{USER_TYPE_LABEL[user.userType] ?? "—"}</StatusPill>
               <EmailConfirmationPill confirmed={user.emailConfirmed} />
             </div>
+            <div className="mt-2"><TrialStatus user={user} details /></div>
           </div>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end sm:text-right">
@@ -148,14 +190,15 @@ export default function CustomerDetailPage() {
             <div className="mt-1">Último login: <strong className="text-tinta">{formatDateTime(user.lastLoginAt)}</strong></div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => void load()} className="btn-ghost h-8 px-2 text-xs">
+            <button onClick={() => void load()} disabled={confirmingEmail} className="btn-ghost h-8 px-2 text-xs">
               <RefreshCw size={12} /> Atualizar
             </button>
-            <button onClick={() => setEditingUser(true)} className="btn-ghost h-8 px-2 text-xs">
+            <button onClick={() => setEditingUser(true)} disabled={confirmingEmail} className="btn-ghost h-8 px-2 text-xs">
               <Edit3 size={12} /> Editar
             </button>
             <button
               onClick={() => setDeletingUser(true)}
+              disabled={confirmingEmail}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-coral/30 bg-coral-50 px-2 text-xs font-semibold text-coral-800 transition hover:bg-coral-100"
               title="Excluir usuário (soft-delete; libera o email)"
             >
@@ -165,7 +208,8 @@ export default function CustomerDetailPage() {
         </div>
       </header>
 
-      {!user.emailConfirmed && <EmailNotConfirmedBanner userId={user.id} />}
+      {!user.emailConfirmed && <EmailNotConfirmedBanner key={`${user.id}:${user.email}`} userId={user.id}
+        email={user.email} isActive={user.isActive} confirming={confirmingEmail} onConfirm={() => void confirmCurrentEmail()} />}
 
       {/* Tabs */}
       <nav className="flex gap-1 border-b border-tintaSoft-100 overflow-x-auto">
@@ -213,16 +257,15 @@ export default function CustomerDetailPage() {
               <p className="text-sm text-cinza">Endereço não cadastrado.</p>
             )}
           </Section>
-          <Section title="Trial">
+          <Section title="Teste grátis">
+            <TrialStatus user={user} details />
             {user.trialStartedAt ? (
               <>
-                <Field label="Início" value={formatDate(user.trialStartedAt)} />
-                <Field label="Expira em" value={formatDate(user.trialEndsAt)} />
-                <Field label="PDFs gerados (trial)" value={String(user.trialPdfsGenerated)} />
+                <Field label="Início (Brasília)" value={formatDateTime(user.trialStartedAt)} />
+                <Field label="Fim (Brasília)" value={formatDateTime(user.trialEndsAt)} />
               </>
-            ) : (
-              <p className="text-sm text-cinza">Trial ainda não iniciado.</p>
-            )}
+            ) : null}
+            <Field label="PDFs gerados no teste" value={String(user.trialPdfsGenerated)} />
           </Section>
           <Section title="Resumo de uso">
             <Field label="Atividades geradas" value={String(totalActivitiesGenerated)} />
@@ -612,12 +655,16 @@ function Field({ label, value, mono, icon: Icon }: { label: string; value: strin
   );
 }
 
-/**
- * Banner amarelo com ação "Reenviar email de confirmação". Estado local
- * (idle/sending/sent/error) — não recarrega a página inteira porque o status
- * `emailConfirmed` só vira true quando o usuário clicar no link do email.
- */
-function EmailNotConfirmedBanner({ userId }: { userId: string }) {
+function EmailConfirmationNotice({ error, message }: { error: boolean; message: string }) {
+  return <div role={error ? "alert" : "status"} className={classNames("rounded-md border p-4 text-sm",
+    error ? "border-coral/30 bg-coral-50 text-coral-800" : "border-erva/30 bg-erva/10 text-tinta")}>
+    {message}
+  </div>;
+}
+
+function EmailNotConfirmedBanner({ userId, email, isActive, confirming, onConfirm }: {
+  userId: string; email: string; isActive: boolean; confirming: boolean; onConfirm: () => void;
+}) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -639,34 +686,48 @@ function EmailNotConfirmedBanner({ userId }: { userId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-amarelo/40 bg-amarelo-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-3 rounded-md border border-amarelo/40 bg-amarelo-50 p-4">
       <div className="flex items-start gap-2 text-sm text-amarelo-900">
         <Mail size={16} className="mt-0.5 flex-shrink-0" />
         <div>
           <p className="font-semibold">E-mail ainda não confirmado</p>
-          <p className="text-xs text-amarelo-900/80">
-            O cliente não pode usar o trial até confirmar. Reenvie o link.
+          <p className="text-xs text-amarelo-900/80">O teste grátis depende da confirmação do e-mail.</p>
+          <p className="mt-1 text-xs text-amarelo-900/80">
+            Reenvie o link ou registre a confirmação de <strong className="break-all">{email}</strong> neste cadastro.
+            O registro manual libera o primeiro período de teste e preserva qualquer período já utilizado.
           </p>
+          {!isActive && <p className="mt-1 text-xs font-semibold">Ative a conta antes de confirmar o e-mail.</p>}
           {state === "error" && error && (
             <p className="mt-1 text-xs italic text-coral-800">{error}</p>
           )}
         </div>
       </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={confirming || state === "sending" || !isActive}
+        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-tinta px-3 py-2 text-sm font-semibold text-creme transition hover:bg-tintaSoft-600 disabled:opacity-60"
+      >
+        {confirming ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <CheckCircle2 size={14} className="shrink-0" />}
+        {confirming ? "Salvando confirmação…" : "Marcar e-mail como confirmado"}
+      </button>
       <button
         type="button"
         onClick={onResend}
-        disabled={state === "sending" || state === "sent"}
+        disabled={confirming || state === "sending" || state === "sent" || !isActive}
         className={classNames(
-          "inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition flex-shrink-0",
+          "inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition disabled:opacity-60",
           state === "sent"
             ? "bg-erva text-creme"
-            : "bg-tinta text-creme hover:bg-tintaSoft-600 disabled:opacity-60"
+            : "border border-tinta/20 bg-creme text-tinta hover:bg-amarelo-100"
         )}
       >
         {state === "sending" && (<><Loader2 size={14} className="animate-spin" /> Enviando…</>)}
         {state === "sent" && (<><CheckCircle2 size={14} /> Email enviado</>)}
         {(state === "idle" || state === "error") && (<><Send size={14} /> Reenviar confirmação</>)}
       </button>
+      </div>
     </div>
   );
 }

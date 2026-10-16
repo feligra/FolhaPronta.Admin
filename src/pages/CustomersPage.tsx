@@ -11,6 +11,7 @@ import {
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
 import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
+import { TrialStatus } from "@/components/TrialStatus";
 import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
 
 const PAGE_SIZE = 20;
@@ -186,7 +187,7 @@ export default function CustomersPage() {
                   <tr>
                     <th className="px-4 py-3">Usuário</th>
                     <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Plano</th>
+                    <th className="px-4 py-3">Plano / teste grátis</th>
                     <th className="px-4 py-3">Assinatura</th>
                     <th className="px-4 py-3">Atividades</th>
                     <th className="px-4 py-3">Cadastro</th>
@@ -261,10 +262,10 @@ function Row({ user, onClick }: { user: AdminUserListItem; onClick: () => void }
       </td>
       <td className="px-4 py-3">
         <PlanBadge slug={user.planSlug} />
+        <div className="mt-2 min-w-[170px]"><TrialStatus user={user} details /></div>
       </td>
       <td className="px-4 py-3">
         <SubBadge status={user.subscriptionStatus} />
-        {user.isTrialActive && <span className="mt-1 block text-[11px] text-turquesa">Teste grátis ativo</span>}
       </td>
       <td className="px-4 py-3"><strong>{user.totalActivitiesGenerated ?? 0}</strong><span className="mt-0.5 block whitespace-nowrap text-[11px] text-cinza">{user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</span></td>
       <td className="px-4 py-3 text-xs text-cinza">{formatDate(user.createdAt)}</td>
@@ -294,7 +295,7 @@ function MobileCard({ user, onClick }: { user: AdminUserListItem; onClick: () =>
           <SubBadge status={user.subscriptionStatus} />
           <span className="text-[10px] text-cinza">{USER_TYPE_LABEL[user.userType] ?? ""}</span>
         </div>
-        {user.isTrialActive && <p className="mt-2 text-xs text-turquesa">Teste grátis ativo até {formatDate(user.trialEndsAt)}</p>}
+        <div className="mt-2"><TrialStatus user={user} details /></div>
         <p className="mt-2 text-xs text-cinza"><strong className="text-tinta">{user.totalActivitiesGenerated ?? 0} atividade(s)</strong> · {user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</p>
         <div className="mt-2"><EmailConfirmationPill confirmed={user.emailConfirmed} /></div>
       </div>

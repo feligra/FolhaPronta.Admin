@@ -71,6 +71,16 @@ export type PaymentRecordStatus =
   | "Cancelled"
   | "ChargedBack";
 
+export type AdminTrialStatus = "WaitingForEmail" | "NotStarted" | "Active" | "Expired" | "Subscribed" | "Inactive";
+
+export interface AdminConfirmEmailResponse {
+  emailConfirmed: boolean;
+  isTrialActive: boolean;
+  trialStartedAt: string | null;
+  trialEndsAt: string | null;
+  alreadyConfirmed: boolean;
+}
+
 export interface AdminUserListItem {
   id: string;
   name: string;
@@ -85,6 +95,8 @@ export interface AdminUserListItem {
   subscriptionStatus: SubscriptionStatus | null;
   isPaidPlan: boolean;
   isTrialActive: boolean;
+  trialStatus: AdminTrialStatus;
+  trialStartedAt: string | null;
   trialEndsAt: string | null;
   totalActivitiesGenerated: number;
   lastActivityGeneratedAt: string | null;
@@ -133,6 +145,8 @@ export interface AdminUserProfile {
   lastLoginAt: string | null;
   trialStartedAt: string | null;
   trialEndsAt: string | null;
+  isTrialActive: boolean;
+  trialStatus: AdminTrialStatus;
   trialPdfsGenerated: number;
 }
 
