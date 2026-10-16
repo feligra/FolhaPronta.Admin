@@ -19,6 +19,8 @@ import {
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
 import { AdminDialog } from "@/components/AdminDialog";
+import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
+import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
 
 type TabKey = "overview" | "subscription" | "payments" | "activities" | "classrooms" | "logins";
 
@@ -48,23 +50,28 @@ export default function CustomerDetailPage() {
   const [editingUser, setEditingUser] = useState(false);
   const [deletingUser, setDeletingUser] = useState(false);
   const loadVersion = useRef(0);
+  const activeLoads = useRef(0);
   useEffect(() => () => { loadVersion.current++; }, []);
 
-  const load = async () => {
-    if (!id) return;
+  const load = async (background = false) => {
+    if (!id || (background && activeLoads.current > 0)) return;
+    activeLoads.current++;
     const version = ++loadVersion.current;
-    setLoading(true);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const r = await adminApi.users.detail(id);
-      if (version === loadVersion.current) setData(r);
+      if (version === loadVersion.current) { setData(r); setError(null); }
     } catch (err: unknown) {
       if (version !== loadVersion.current) return;
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar cliente.";
-      setError(msg);
+      if (!background) setError(msg);
     } finally {
+      activeLoads.current--;
       if (version === loadVersion.current) setLoading(false);
     }
   };
@@ -75,6 +82,7 @@ export default function CustomerDetailPage() {
     return () => { loadVersion.current++; };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [id]);
+  useVisiblePageRefresh(() => { void load(true); });
 
   if (loading) {
     return (
@@ -130,7 +138,7 @@ export default function CustomerDetailPage() {
               </StatusPill>
               {user.role === "Admin" && <StatusPill tone="coral">Admin</StatusPill>}
               <StatusPill tone="neutral">{USER_TYPE_LABEL[user.userType] ?? "—"}</StatusPill>
-              {!user.emailConfirmed && <StatusPill tone="amarelo">E-mail não confirmado</StatusPill>}
+              <EmailConfirmationPill confirmed={user.emailConfirmed} />
             </div>
           </div>
         </div>
@@ -139,7 +147,10 @@ export default function CustomerDetailPage() {
             <div>Cadastro: <strong className="text-tinta">{formatDate(user.createdAt)}</strong></div>
             <div className="mt-1">Último login: <strong className="text-tinta">{formatDateTime(user.lastLoginAt)}</strong></div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => void load()} className="btn-ghost h-8 px-2 text-xs">
+              <RefreshCw size={12} /> Atualizar
+            </button>
             <button onClick={() => setEditingUser(true)} className="btn-ghost h-8 px-2 text-xs">
               <Edit3 size={12} /> Editar
             </button>

@@ -10,6 +10,8 @@ import {
   SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_TONE, USER_TYPE_LABEL,
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
+import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
+import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
 
 const PAGE_SIZE = 20;
 
@@ -32,6 +34,7 @@ export default function CustomersPage() {
   // Debounce do search box: 300ms — espera o admin parar de digitar antes de
   // bater no backend. Sem isso, cada tecla dispara uma request.
   const loadVersion = useRef(0);
+  const activeLoads = useRef(0);
   useEffect(() => () => { loadVersion.current++; }, []);
   useEffect(() => { setSearchInput(search); }, [search]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,10 +54,14 @@ export default function CustomersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput, search, setParams]);
 
-  const load = async () => {
+  const load = async (background = false) => {
+    if (background && activeLoads.current > 0) return;
+    activeLoads.current++;
     const version = ++loadVersion.current;
-    setLoading(true);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const r = await adminApi.users.list({
         search: search || undefined,
@@ -63,19 +70,21 @@ export default function CustomersPage() {
         page,
         pageSize: PAGE_SIZE,
       });
-      if (version === loadVersion.current) setData(r);
+      if (version === loadVersion.current) { setData(r); setError(null); }
     } catch (err: unknown) {
       if (version !== loadVersion.current) return;
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar clientes.";
-      setError(msg);
+      if (!background) setError(msg);
     } finally {
+      activeLoads.current--;
       if (version === loadVersion.current) setLoading(false);
     }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [search, isActive, role, page]);
+  useVisiblePageRefresh(() => { void load(true); });
 
   const updateFilter = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
@@ -110,7 +119,7 @@ export default function CustomersPage() {
             Todos os usuários cadastrados no FolhaPronta.
           </p>
         </div>
-        <button onClick={load} className="btn-ghost" title="Recarregar">
+        <button onClick={() => void load()} className="btn-ghost" title="Recarregar">
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Recarregar
         </button>
@@ -243,6 +252,7 @@ function Row({ user, onClick }: { user: AdminUserListItem; onClick: () => void }
           <div className="min-w-0">
             <div className="truncate font-medium text-tinta">{user.name}</div>
             <div className="truncate text-xs text-cinza">{user.email}</div>
+            <div className="mt-1"><EmailConfirmationPill confirmed={user.emailConfirmed} /></div>
           </div>
         </div>
       </td>
@@ -286,7 +296,7 @@ function MobileCard({ user, onClick }: { user: AdminUserListItem; onClick: () =>
         </div>
         {user.isTrialActive && <p className="mt-2 text-xs text-turquesa">Teste grátis ativo até {formatDate(user.trialEndsAt)}</p>}
         <p className="mt-2 text-xs text-cinza"><strong className="text-tinta">{user.totalActivitiesGenerated ?? 0} atividade(s)</strong> · {user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</p>
-        {!user.emailConfirmed && <p className="mt-1 text-xs text-amarelo-800">E-mail ainda não confirmado</p>}
+        <div className="mt-2"><EmailConfirmationPill confirmed={user.emailConfirmed} /></div>
       </div>
     </div>
   );
