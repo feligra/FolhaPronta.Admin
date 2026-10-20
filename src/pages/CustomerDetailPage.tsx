@@ -18,6 +18,8 @@ import {
   USER_TYPE_LABEL,
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
+import { BillingProviderReference } from "@/components/BillingProviderReference";
+import { hasProviderAgreement, paymentProviderLabel, subscriptionReference } from "@/utils/billing";
 import { AdminDialog } from "@/components/AdminDialog";
 import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
 import { TrialStatus } from "@/components/TrialStatus";
@@ -301,6 +303,14 @@ export default function CustomerDetailPage() {
                 <Field label="Cancelada em" value={formatDate(currentSubscription.canceledAt)} />
                 <Field label="Motivo do cancelamento" value={currentSubscription.cancelReason || "—"} />
                 <Field label="Subscription id" value={currentSubscription.id} mono />
+                <Field label="Provedor" value={paymentProviderLabel(currentSubscription.provider)} />
+                {subscriptionReference(currentSubscription) && (
+                  <Field label={currentSubscription.provider === "Stripe" && !currentSubscription.stripeSubscriptionId
+                    ? "Checkout Stripe" : "Assinatura no provedor"}
+                    value={subscriptionReference(currentSubscription)!} mono />
+                )}
+                {currentSubscription.stripeCustomerId && <Field label="Cliente Stripe" value={currentSubscription.stripeCustomerId} mono />}
+                {currentSubscription.stripePriceId && <Field label="Preço Stripe contratado" value={currentSubscription.stripePriceId} mono />}
                 <Field label="Criada em" value={formatDate(currentSubscription.createdAt)} />
               </div>
 
@@ -339,6 +349,11 @@ export default function CustomerDetailPage() {
                 {!currentSubscription.hasAccess && (
                   <button onClick={() => setSubAction({ kind: "grant" })} className="btn-primary">
                     <Sparkles size={14} /> Conceder nova assinatura
+                  </button>
+                )}
+                {!currentSubscription.hasAccess && hasProviderAgreement(currentSubscription) && (
+                  <button onClick={() => setSubAction({ kind: "cancel" })} className="btn-ghost">
+                    <Ban size={14} /> Encerrar assinatura
                   </button>
                 )}
               </div>
@@ -385,6 +400,7 @@ export default function CustomerDetailPage() {
           subscriptionId={currentSubscription.id}
           currentPeriodEnd={currentSubscription.currentPeriodEnd}
           alreadyCancelled={currentSubscription.status === "Cancelled"}
+          hasAccess={currentSubscription.hasAccess}
           onClose={() => setSubAction(null)}
           onDone={() => { setSubAction(null); load(); }}
         />
@@ -425,6 +441,11 @@ export default function CustomerDetailPage() {
                     {p.failureReason && (
                       <p className="mt-1 text-xs italic text-coral-800">{p.failureReason}</p>
                     )}
+                    <div className="mt-2">
+                      <BillingProviderReference provider={p.provider}
+                        reference={p.providerPaymentId ?? p.stripeInvoiceId ?? p.mercadoPagoPaymentId} />
+                      {p.stripePaymentIntentId && <p className="mt-1 break-all font-mono text-[11px] text-cinza select-all">Payment Intent: {p.stripePaymentIntentId}</p>}
+                    </div>
                   </div>
                   <div className="whitespace-nowrap text-right">
                     <p className="font-semibold text-tinta">R$ {formatPrice(p.amount)}</p>
@@ -965,16 +986,16 @@ function ExtendSubscriptionModal({
 
 // ── Cancelar ───────────────────────────────────────────────────────────
 function CancelSubscriptionModal({
-  subscriptionId, currentPeriodEnd, alreadyCancelled, onClose, onDone,
+  subscriptionId, currentPeriodEnd, alreadyCancelled, hasAccess, onClose, onDone,
 }: {
   subscriptionId: string; currentPeriodEnd: string | null;
   alreadyCancelled?: boolean;
+  hasAccess: boolean;
   onClose: () => void; onDone: () => void;
 }) {
-  // Quando a sub já está Cancelled-vigente, o backend SÓ aceita immediate=true
-  // (cancelar civilizado dela seria no-op). Forçamos isso pra UI ficar honesta.
+  const immediateOnly = !!alreadyCancelled || !hasAccess;
   const [reason, setReason] = useState("");
-  const [immediate, setImmediate] = useState(!!alreadyCancelled);
+  const [immediate, setImmediate] = useState(immediateOnly);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -992,27 +1013,31 @@ function CancelSubscriptionModal({
 
   return (
     <Modal
-      title={alreadyCancelled ? "Cortar acesso agora" : "Cancelar assinatura"}
+      title={!hasAccess ? "Encerrar assinatura" : alreadyCancelled ? "Cortar acesso agora" : "Cancelar assinatura"}
       onClose={onClose}
     >
-      {alreadyCancelled ? (
+      {!hasAccess ? (
+        <p className="text-sm text-tinta/80">
+          A assinatura será encerrada imediatamente, incluindo qualquer renovação ainda pendente no provedor.
+        </p>
+      ) : alreadyCancelled ? (
         <p className="text-sm text-tinta/80">
           A assinatura já foi cancelada e o acesso vence em <strong>{formatDate(currentPeriodEnd)}</strong>.
           Esta ação corta o acesso <strong>imediatamente</strong> (não dá pra desfazer pelo painel).
         </p>
       ) : (
         <p className="text-sm text-tinta/80">
-          Cancelamento "civilizado" mantém acesso até <strong>{formatDate(currentPeriodEnd)}</strong>.
+          O cancelamento mantém acesso até <strong>{formatDate(currentPeriodEnd)}</strong>.
         </p>
       )}
       <label className="label mt-4">Motivo (opcional)</label>
       <textarea className="input min-h-[60px]" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: solicitação por suporte" />
-      {!alreadyCancelled && (
+      {!immediateOnly && (
         <label className="mt-3 flex items-start gap-2 text-sm text-tinta">
           <input type="checkbox" checked={immediate} onChange={(e) => setImmediate(e.target.checked)} className="mt-0.5" />
           <span>
             <span className="block font-semibold">Cortar acesso imediatamente</span>
-            <span className="block text-[11px] text-cinza">Marca CurrentPeriodEnd no passado — cliente perde acesso já. Use só em casos extremos (fraude, abuso).</span>
+            <span className="block text-[11px] text-cinza">Encerra a recorrência e o acesso Premium agora.</span>
           </span>
         </label>
       )}
@@ -1021,7 +1046,7 @@ function CancelSubscriptionModal({
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-coral">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
-          {alreadyCancelled ? "Confirmar corte de acesso" : "Confirmar cancelamento"}
+          {alreadyCancelled && hasAccess ? "Confirmar corte de acesso" : "Confirmar cancelamento"}
         </button>
       </div>
     </Modal>

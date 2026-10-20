@@ -198,6 +198,8 @@ function PlanCard({
         <p className="mt-1 text-xs text-cinza">Uma única vez, para novos assinantes. {plan.isActive ? "Oferta exibida nas páginas públicas." : "A oferta será exibida quando o plano estiver ativo."}</p>
       </div> : <p className="text-xs text-cinza">Sem promoção de primeiro mês.</p>}
 
+      <StripePriceStatus plan={plan} />
+
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-tintaSoft-100 p-3">
         <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-cinza">
           <Calendar size={12} /> Planejador semanal
@@ -226,6 +228,21 @@ function PlanCard({
 }
 
 // ── Modal: criar plano ──────────────────────────────────────────────────
+function StripePriceStatus({ plan }: { plan: Pick<AdminPlanDetail, "stripeSyncStatus" | "stripePendingPrice" | "stripeSyncError" | "monthlyPrice" | "isActive"> }) {
+  if (plan.stripeSyncStatus === "synced") {
+    return <p className="text-xs text-erva">Preço sincronizado com a Stripe.</p>;
+  }
+  if (plan.stripeSyncStatus !== "pending" && plan.stripeSyncStatus !== "error") return null;
+  return (
+    <div role="status" className="rounded-md border border-amarelo/30 bg-amarelo-50 p-3 text-xs text-amarelo-900">
+      <p className="font-semibold">{plan.stripeSyncStatus === "error" ? "Sincronização do preço pendente" : "Sincronizando preço com a Stripe"}</p>
+      {plan.stripePendingPrice != null && <p className="mt-1">Preço solicitado: R$ {formatPrice(plan.stripePendingPrice)}.</p>}
+      {plan.stripeSyncError && <p className="mt-1">{plan.stripeSyncError}</p>}
+      <p className="mt-1">{plan.isActive ? `O preço publicado continua R$ ${formatPrice(plan.monthlyPrice)} até a confirmação.` : "O plano só poderá ser contratado após a sincronização e ativação."} A sincronização é repetida automaticamente. Salve a edição para tentar novamente agora.</p>
+    </div>
+  );
+}
+
 function PlanCreateModal({
   onClose, onCreated,
 }: { onClose: () => void; onCreated: (id: string) => void }) {
@@ -409,12 +426,12 @@ function PlanEditModal({
         if (cancelled) return;
         setData(d);
         setName(d.name);
-        setPrice(String(d.monthlyPrice));
+        setPrice(String(d.stripePendingPrice ?? d.monthlyPrice));
         setDescription(d.description ?? "");
-        setIsActive(d.isActive);
+        setIsActive(d.isActive || !!d.stripeActivateOnSync);
         setSortOrder(d.sortOrder);
         setIncludesWeeklyPlanner(d.includesWeeklyPlanner);
-        setFirstMonthDiscountEnabled(!!d.firstMonthDiscountEnabled);
+        setFirstMonthDiscountEnabled(d.stripePendingFirstMonthDiscount ?? !!d.firstMonthDiscountEnabled);
         setFeatures(featuresJsonToLines(d.featuresJson));
       } catch (err: unknown) {
         if (!cancelled) {
@@ -453,13 +470,13 @@ function PlanEditModal({
 
       const updates: AdminUpdatePlanBody = {};
       if (name !== data.name) updates.name = name.trim();
-      if (numericPrice !== data.monthlyPrice) updates.monthlyPrice = numericPrice;
+      if (numericPrice !== data.monthlyPrice || data.stripeSyncStatus === "error" || data.stripeSyncStatus === "pending") updates.monthlyPrice = numericPrice;
       if ((description || null) !== (data.description ?? null)) updates.description = description || null;
-      if (isActive !== data.isActive) updates.isActive = isActive;
+      if (isActive !== (data.isActive || !!data.stripeActivateOnSync)) updates.isActive = isActive;
       if (sortOrder !== data.sortOrder) updates.sortOrder = sortOrder;
       if (includesWeeklyPlanner !== data.includesWeeklyPlanner) updates.includesWeeklyPlanner = includesWeeklyPlanner;
       const discountEnabled = firstMonthDiscountEnabled && !discountUnavailableReason(data.slug, numericPrice, data.billingFrequencyMonths);
-      if (discountEnabled !== !!data.firstMonthDiscountEnabled) updates.firstMonthDiscountEnabled = discountEnabled;
+      if (discountEnabled !== !!data.firstMonthDiscountEnabled || data.stripePendingPrice != null) updates.firstMonthDiscountEnabled = discountEnabled;
       const newFeaturesJson = linesToFeaturesJson(features);
       if (newFeaturesJson !== (data.featuresJson ?? null)) updates.featuresJson = newFeaturesJson;
 
@@ -501,6 +518,7 @@ function PlanEditModal({
 
         {!loading && data && (
           <div className="space-y-5">
+            <StripePriceStatus plan={data} />
             {data.subscriptionCount > 0 && !data.isActive && (
               <div className="rounded-md bg-amarelo-50 p-3 text-xs text-amarelo-900">
                 Atenção: este plano está <strong>inativo</strong> mas tem{" "}

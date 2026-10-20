@@ -11,6 +11,8 @@ import type {
 import { classNames, formatDate, formatPrice } from "@/utils/format";
 import { SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_TONE } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
+import { BillingProviderReference } from "@/components/BillingProviderReference";
+import { canCancelSubscription, subscriptionReference } from "@/utils/billing";
 
 const PAGE_SIZE = 20;
 
@@ -187,6 +189,7 @@ export default function SubscriptionsPage() {
                   <tr>
                     <th className="px-4 py-3">Cliente</th>
                     <th className="px-4 py-3">Plano</th>
+                    <th className="px-4 py-3">Provedor</th>
                     <th className="px-4 py-3">Valor</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Vigência</th>
@@ -268,9 +271,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "er
 function Row({
   sub, onCancel, onExtend,
 }: { sub: AdminSubscriptionListItem; onCancel: () => void; onExtend: () => void }) {
-  // Cancelar só faz sentido em quem tem MP ativo ou ainda dá acesso —
-  // botão fica disabled em Expired/já-Cancelled-sem-vigência.
-  const canCancel = sub.status !== "Expired" && (sub.status !== "Cancelled" || sub.hasAccess);
+  const canCancel = canCancelSubscription(sub);
   const canExtend = ["Active", "Cancelled", "Expired"].includes(sub.status);
   return (
     <tr className="border-t border-tintaSoft-100">
@@ -284,7 +285,10 @@ function Row({
         <div className="font-medium text-tinta">{sub.planName}</div>
         <div className="text-[10px] uppercase tracking-wider text-cinza">{sub.planSlug}</div>
       </td>
-      <td className="px-4 py-3 text-sm text-tinta">R$ {formatPrice(sub.monthlyAmount)}</td>
+      <td className="max-w-[220px] px-4 py-3">
+        <BillingProviderReference provider={sub.provider} reference={subscriptionReference(sub)} />
+      </td>
+      <td className="px-4 py-3 text-sm text-tinta">R$ {formatPrice(sub.monthlyAmount)}/{sub.billingFrequencyMonths === 12 ? "ano" : "mês"}</td>
       <td className="px-4 py-3">
         <StatusPill tone={SUBSCRIPTION_STATUS_TONE[sub.status]}>
           {SUBSCRIPTION_STATUS_LABEL[sub.status]}
@@ -324,7 +328,7 @@ function Row({
 function MobileCard({
   sub, onCancel, onExtend,
 }: { sub: AdminSubscriptionListItem; onCancel: () => void; onExtend: () => void }) {
-  const canCancel = sub.status !== "Expired" && (sub.status !== "Cancelled" || sub.hasAccess);
+  const canCancel = canCancelSubscription(sub);
   const canExtend = ["Active", "Cancelled", "Expired"].includes(sub.status);
   return (
     <div className="card space-y-2">
@@ -338,9 +342,10 @@ function MobileCard({
         </StatusPill>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-cinza">
-        <span>{sub.planName} · R$ {formatPrice(sub.monthlyAmount)}/mês</span>
+        <span>{sub.planName} · R$ {formatPrice(sub.monthlyAmount)}/{sub.billingFrequencyMonths === 12 ? "ano" : "mês"}</span>
         <span>até {formatDate(sub.currentPeriodEnd)}</span>
       </div>
+      <BillingProviderReference provider={sub.provider} reference={subscriptionReference(sub)} />
       <div className="flex gap-2 pt-1">
         <button
           onClick={onExtend}
@@ -405,8 +410,9 @@ function Paginator({
 function CancelModal({
   sub, onClose, onDone,
 }: { sub: AdminSubscriptionListItem; onClose: () => void; onDone: () => void }) {
+  const immediateOnly = sub.status === "Cancelled" || !sub.hasAccess;
   const [reason, setReason] = useState("");
-  const [immediate, setImmediate] = useState(false);
+  const [immediate, setImmediate] = useState(immediateOnly);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -426,7 +432,11 @@ function CancelModal({
     <Modal title="Cancelar assinatura" onClose={onClose}>
       <p className="text-sm text-tinta/80">
         Vai cancelar a assinatura de <strong>{sub.userName}</strong> ({sub.planName}).
-        Cancelamento "civilizado" mantém acesso até <strong>{formatDate(sub.currentPeriodEnd)}</strong>.
+        {immediateOnly
+          ? sub.hasAccess
+            ? " A assinatura e o acesso Premium serão encerrados imediatamente."
+            : " A assinatura será encerrada imediatamente, incluindo qualquer renovação ainda pendente no provedor."
+          : <> O cancelamento mantém acesso até <strong>{formatDate(sub.currentPeriodEnd)}</strong>.</>}
       </p>
 
       <label className="label mt-4">Motivo (opcional)</label>
@@ -437,7 +447,7 @@ function CancelModal({
         placeholder="Ex.: solicitação por suporte, fraude, conflito de cobrança…"
       />
 
-      <label className="mt-3 flex items-start gap-2 text-sm text-tinta">
+      {!immediateOnly && <label className="mt-3 flex items-start gap-2 text-sm text-tinta">
         <input
           type="checkbox"
           checked={immediate}
@@ -447,11 +457,10 @@ function CancelModal({
         <span>
           <span className="block font-semibold">Cortar acesso imediatamente</span>
           <span className="block text-[11px] text-cinza">
-            Marca <code>CurrentPeriodEnd</code> no passado — cliente perde acesso já.
-            Use só em casos extremos (fraude, abuso).
+            Encerra a recorrência e o acesso Premium agora.
           </span>
         </span>
-      </label>
+      </label>}
 
       {err && <p className="mt-3 rounded-md bg-coral-50 p-2 text-sm text-coral-800">{err}</p>}
 

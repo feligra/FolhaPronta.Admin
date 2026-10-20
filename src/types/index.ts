@@ -150,13 +150,26 @@ export interface AdminUserProfile {
   trialPdfsGenerated: number;
 }
 
-export interface AdminSubscription {
+export type PaymentProvider = "Manual" | "MercadoPago" | "Stripe";
+
+export interface AdminSubscriptionProvider {
+  provider?: PaymentProvider;
+  hasProviderAgreement?: boolean;
+  providerSubscriptionId?: string | null;
+  mercadoPagoSubscriptionId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+}
+
+export interface AdminSubscription extends AdminSubscriptionProvider {
   id: string;
   planId: string;
   planName: string | null;
   planSlug: string | null;
   monthlyAmount: number;
   billingFrequencyMonths?: number;
+  stripeCustomerId?: string | null;
+  stripePriceId?: string | null;
   status: SubscriptionStatus;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
@@ -174,6 +187,11 @@ export interface AdminPaymentRecord {
   amount: number;
   currency: string;
   paymentMethod: string | null;
+  provider?: PaymentProvider;
+  providerPaymentId?: string | null;
+  mercadoPagoPaymentId?: string | null;
+  stripeInvoiceId?: string | null;
+  stripePaymentIntentId?: string | null;
   description: string | null;
   createdAt: string;
   paidAt: string | null;
@@ -227,7 +245,7 @@ export interface AdminLoginHistoryResponse {
 }
 
 // ── Admin · Subscriptions ─────────────────────────────────────────────
-export interface AdminSubscriptionListItem {
+export interface AdminSubscriptionListItem extends AdminSubscriptionProvider {
   id: string;
   userId: string;
   userName: string;
@@ -286,6 +304,11 @@ export const ALL_ACTIVITY_TYPES = [
 export type ActivityTypeName = (typeof ALL_ACTIVITY_TYPES)[number];
 
 export interface AdminPlanListItem {
+  stripeSyncStatus?: "unconfigured" | "pending" | "synced" | "error";
+  stripePendingPrice?: number | null;
+  stripePendingFirstMonthDiscount?: boolean | null;
+  stripeSyncError?: string | null;
+  stripePriceVersionId?: string | null;
   id: string;
   name: string;
   slug: string;
@@ -327,6 +350,12 @@ export interface AdminActivitiesListResponse {
 }
 
 export interface AdminPlanDetail {
+  stripeSyncStatus?: "unconfigured" | "pending" | "synced" | "error";
+  stripePendingPrice?: number | null;
+  stripePendingFirstMonthDiscount?: boolean | null;
+  stripeSyncError?: string | null;
+  stripePriceVersionId?: string | null;
+  stripeActivateOnSync?: boolean;
   id: string;
   name: string;
   slug: string;
