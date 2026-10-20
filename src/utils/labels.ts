@@ -56,6 +56,7 @@ export const ACTIVITY_TYPE_LABEL: Record<string, string> = {
   Syllable: "Família silábica",
   Labyrinth: "Labirinto",
   ConnectDots: "Ligue os pontos",
+  ConnectPairs: "Ligue sem cruzar",
   WordSearch: "Caça-palavras",
   NameFigure: "Nome da figura",
   SymbolHunt: "Caça ao símbolo",

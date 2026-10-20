@@ -281,7 +281,7 @@ export const ALL_ACTIVITY_TYPES = [
   "LogicCauseEffect", "LogicSudoku", "ShapeArithmetic", "MatchColors",
   "GeographyFlags", "ColorNaming", "Bingo", "CountSticks", "Adedonha",
   "TimeClock", "BeforeAfter", "CompareNumbers", "BodySafety", "CountBlocks",
-  "SecretCode",
+  "SecretCode", "ConnectPairs",
 ] as const;
 export type ActivityTypeName = (typeof ALL_ACTIVITY_TYPES)[number];
 
