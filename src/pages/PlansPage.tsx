@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { adminApi } from "@/services/api";
 import type {
-  AdminCreatePlanBody,
+  AdminCreatePlanBody, AdminBillingHealthResponse,
   AdminPlanDetail, AdminPlanListItem, AdminPlansListResponse,
   AdminUpdatePlanBody,
 } from "@/types";
@@ -22,6 +22,8 @@ export default function PlansPage() {
   const [data, setData] = useState<AdminPlansListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [billingHealth, setBillingHealth] = useState<AdminBillingHealthResponse | null>(null);
+  const [billingUnavailable, setBillingUnavailable] = useState(false);
   const loadVersion = useRef(0);
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -32,6 +34,16 @@ export default function PlansPage() {
     const requestVersion = ++loadVersion.current;
     setLoading(true);
     setError(null);
+    // The optional diagnostic must never hold up the catalog or its operations.
+    void adminApi.billing.health().then(result => {
+      if (requestVersion !== loadVersion.current) return;
+      setBillingHealth(result);
+      setBillingUnavailable(false);
+    }).catch(() => {
+      if (requestVersion !== loadVersion.current) return;
+      setBillingHealth(null);
+      setBillingUnavailable(true);
+    });
     try {
       const r = await adminApi.plans.list(true);
       if (requestVersion === loadVersion.current) setData(r);
@@ -87,6 +99,8 @@ export default function PlansPage() {
           </button>
         </div>
       </header>
+
+      <BillingConfigurationNotice health={billingHealth} unavailable={billingUnavailable} />
 
       <section className="grid grid-cols-2 gap-3">
         <Stat label="Total de planos" value={stats.total} />
@@ -149,6 +163,35 @@ export default function PlansPage() {
       )}
     </div>
   );
+}
+
+const stripeConfigurationHelp: Record<string, string> = {
+  "Stripe secret key must match the configured environment.": "Confira STRIPE_SECRET (ou STRIPE_SECRET_KEY) e STRIPE_LIVE_MODE: chaves sk_test_ exigem false; chaves sk_live_ exigem true.",
+  "Stripe billing currency must be BRL.": "Configure a moeda da integração como BRL na API (Stripe__Currency=brl).",
+  "New Stripe checkouts are disabled.": "Novas assinaturas Stripe estão desabilitadas. Após conferir a configuração, habilite STRIPE_ENABLED no deploy da API.",
+  "Stripe publishable key must match the configured environment.": "Confira STRIPE_PUBLIC (ou STRIPE_PUBLISHABLE_KEY) e STRIPE_LIVE_MODE: use a chave pública do mesmo modo e da mesma conta da chave secreta.",
+  "Stripe account ID is required before opening checkout.": "Informe STRIPE_ACCOUNT_ID com o ID acct_ da conta Stripe que possui as chaves configuradas.",
+  "Stripe webhook signing secret is required before opening checkout.": "Configure STRIPE_WEBHOOK_SECRET com o segredo whsec_ do destino /api/webhooks/stripe, no mesmo ambiente das chaves.",
+  "Stripe WebBaseUrl must be HTTPS (localhost is allowed in test mode).": "Confira o endereço público HTTPS do site na API (DOMAIN_WEB no deploy). HTTP é permitido apenas em localhost no modo de teste.",
+};
+
+function BillingConfigurationNotice({ health, unavailable }: { health: AdminBillingHealthResponse | null; unavailable: boolean }) {
+  if (unavailable) return <section role="status" aria-label="Diagnóstico de pagamentos" className="card border-amarelo/40 text-sm text-tinta">
+    <p className="font-semibold">Diagnóstico de pagamentos indisponível</p>
+    <p className="mt-1">Use Recarregar para consultar novamente. As operações dos planos continuam disponíveis.</p>
+  </section>;
+  if (!health || health.newCheckoutProvider !== "Stripe") return null;
+  const error = health.stripeConfigurationError;
+  if (!error && health.stripeNewCheckoutEnabled && health.stripeConfigured) return null;
+  const knownError = error && Object.prototype.hasOwnProperty.call(stripeConfigurationHelp, error) ? stripeConfigurationHelp[error] : null;
+  const message = knownError ?? (!health.stripeNewCheckoutEnabled
+    ? stripeConfigurationHelp["New Stripe checkouts are disabled."]
+    : "A configuração local da Stripe está incompleta ou incompatível. Confira as chaves, STRIPE_ACCOUNT_ID, STRIPE_WEBHOOK_SECRET e STRIPE_LIVE_MODE no deploy da API.");
+  return <section role="alert" aria-label="Diagnóstico de pagamentos" className="card border-amarelo/40 text-sm text-tinta">
+    <p className="flex items-center gap-2 font-semibold"><AlertCircle size={16} aria-hidden />Configuração de pagamentos pendente</p>
+    <p className="mt-2 break-words">{message}</p>
+    <p className="mt-2 text-xs text-cinza">Ambiente configurado: {health.liveMode ? "produção" : "teste"}. Alterações no GitHub Actions precisam de novo deploy da API. Esta verificação é local e não confirma conexão com a Stripe.</p>
+  </section>;
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "erva" | "lavanda" }) {

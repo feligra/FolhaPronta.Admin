@@ -4,11 +4,12 @@ const fs = require("node:fs");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const base = process.env.TEST_BASE_URL || "http://127.0.0.1:3012";
+const output = path.resolve(process.env.TEST_OUTPUT_DIR || "dist/verification");
 const now = new Date().toISOString();
 const end = new Date(Date.now() + 86400000 * 7).toISOString();
 const longName = "Professora".repeat(18);
 const longEmail = `${"professora".repeat(19)}@exemplo.com.br`;
-const user = { id: "customer-1", name: longName, email: longEmail, role: "User", userType: 1, isActive: true, emailConfirmed: false, createdAt: now, lastLoginAt: now, planSlug: null, subscriptionStatus: null, isPaidPlan: false, isTrialActive: true, trialEndsAt: end, totalActivitiesGenerated: 1205, lastActivityGeneratedAt: now };
+const user = { id: "customer-1", name: longName, email: longEmail, role: "User", userType: 1, isActive: true, emailConfirmed: false, createdAt: now, lastLoginAt: now, planSlug: null, subscriptionStatus: null, isPaidPlan: false, isTrialActive: true, trialStatus: "Active", trialEndsAt: end, totalActivitiesGenerated: 1205, lastActivityGeneratedAt: now };
 const plan = { id: "plan-1", name: longName, slug: "pro-anual", monthlyPrice: 240, billingFrequencyMonths: 12, isActive: true, includesWeeklyPlanner: true, allowedActivitiesCount: 0, sortOrder: 1, description: "Plano para docentes", hasActivityRestrictions: false, mercadoPagoPlanId: null, subscriptionCount: 1, allowedActivities: [], featuresJson: "[]" };
 const subscription = { id: "sub-1", userId: user.id, userName: user.name, userEmail: user.email, planId: plan.id, planName: plan.name, planSlug: plan.slug, monthlyAmount: 240, billingFrequencyMonths: 12, status: "Active", currentPeriodStart: now, currentPeriodEnd: end, canceledAt: null, hasAccess: true, createdAt: now };
 const paged = (items, pageSize = 20) => ({ items, page: 1, pageSize, totalCount: items.length, totalPages: 1 });
@@ -99,6 +100,7 @@ async function main() {
       body = paged(logs, 50);
     }
     else if (pathname === "/api/admin/health") body = { status: "ok", adminId: "admin-1", email: "admin@example.com", timestamp: now };
+    else if (pathname === "/api/admin/billing/health") body = { newCheckoutProvider: "Stripe", stripeNewCheckoutEnabled: true, stripeConfigured: true, stripeWebhookConfigured: true, liveMode: false, stripeConfigurationError: null };
     else { unexpected.push(`${method} ${pathname}`); return route.fulfill({ status: 404, headers, json: { error: { message: "API mock não configurada" } } }); }
     return route.fulfill({ status, headers, contentType: "application/json", body: JSON.stringify(body) });
   });
@@ -111,7 +113,7 @@ async function main() {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  fs.mkdirSync(path.resolve("dist/verification"), { recursive: true });
+  fs.mkdirSync(output, { recursive: true });
   let checks = 0;
   async function check(name, action) { await action(); checks++; process.stdout.write(`PASS ${name}\n`); }
   async function open(route, heading) { await page.goto(base + route); await page.getByRole("heading", { name: heading, exact: true }).waitFor(); await page.locator("main").getByText(/Carregando/).first().waitFor({ state: "hidden" }).catch(() => {}); }
@@ -241,11 +243,12 @@ async function main() {
     await check("Cliente mostra contagem, geração recente e trial", async () => {
       await open("/clientes", "Clientes");
       await page.getByText("1205 atividade(s)", { exact: true }).waitFor();
-      await page.getByText(/Teste grátis ativo até/).waitFor();
+      await page.getByText("Teste grátis ativo", { exact: true }).filter({ visible: true }).waitFor();
+      await page.getByText(/Disponível até .*\(Brasília\)/).filter({ visible: true }).waitFor();
       await open("/clientes/customer-1", longName);
       await page.getByRole("button", { name: "Atividades", exact: true }).click();
       await page.getByText("Ligue os pontos — gato", { exact: true }).waitFor();
-      await page.screenshot({ path: "dist/verification/admin-customer-mobile.png", fullPage: true });
+      await page.screenshot({ path: path.join(output, "admin-customer-mobile.png"), fullPage: true });
     });
     await check("Página na URL é preservada e pesquisa lenta não substitui resultado novo", async () => {
       await open("/clientes?page=3", "Clientes");
@@ -282,7 +285,7 @@ async function main() {
       const dialog = page.getByRole("dialog");
       assert((await dialog.boundingBox()).height <= 456);
       await dialog.getByRole("button", { name: "Salvar preferências" }).scrollIntoViewIfNeeded();
-      await page.screenshot({ path: "dist/verification/admin-notifications-dialog-mobile.png", fullPage: true });
+      await page.screenshot({ path: path.join(output, "admin-notifications-dialog-mobile.png"), fullPage: true });
       await page.keyboard.press("Escape");
     });
     await check("Falha temporária no refresh preserva sessão e permite recuperar os dados", async () => {
@@ -342,6 +345,7 @@ async function main() {
     }
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
     assert.deepEqual(oldRequestsUsingNewLogin, [], "Requisições da sessão antiga não devem ser repetidas na conta nova");
+    fs.writeFileSync(path.join(output, "admin-browser-report.json"), JSON.stringify({ passed: checks, errors, unexpected, realMutations: 0 }, null, 2));
     process.stdout.write(`PASS ${checks}/${checks} cenários; APIs simuladas, sem e-mails reais.\n`);
   } finally { await browser.close(); }
 }

@@ -29,11 +29,20 @@ async function main(){
   const creates=[],updates=[],checks=[],errors=[],unexpected=[];
   let rejectUpdate=false;
   let holdNextList=false, delayedListStarted=false, releaseDelayedList=null;
+  const healthyBilling={newCheckoutProvider:'Stripe',stripeNewCheckoutEnabled:true,stripeConfigured:true,stripeWebhookConfigured:true,liveMode:false,stripeConfigurationError:null};
+  let billingHealth={...healthyBilling}, billingStatus=200;
+  let holdNextHealth=false, delayedHealthStarted=false, releaseDelayedHealth=null;
   await context.route('**/api/**',async route=>{
     const req=route.request(),url=new URL(req.url()),method=req.method();
     const headers={'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type','access-control-allow-methods':'GET,POST,PATCH,OPTIONS'};
     const respond=(body,status=200)=>route.fulfill({status,headers,json:body}).catch(()=>{});
     if(method==='OPTIONS')return route.fulfill({status:204,headers});
+    if(url.pathname==='/api/admin/billing/health' && method==='GET'){
+      const snapshot=structuredClone(billingHealth),status=billingStatus;
+      assert.equal(req.headers().authorization,'Bearer fake-admin-plans');
+      if(holdNextHealth){holdNextHealth=false;delayedHealthStarted=true;await new Promise(resolve=>releaseDelayedHealth=resolve);}
+      return respond(snapshot,status);
+    }
     if(url.pathname==='/api/admin/plans' && method==='GET'){
       const snapshot={items:structuredClone([...plans.values()]),totalActivityTypes:33};
       if(holdNextList){holdNextList=false;delayedListStarted=true;await new Promise(resolve=>releaseDelayedList=resolve);}
@@ -69,8 +78,69 @@ async function main(){
   const save=async()=>{await dialog().getByRole('button',{name:'Salvar alterações',exact:true}).click();await dialog().waitFor({state:'hidden'});};
   const fits=async()=>{assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert(await dialog().evaluate(e=>e.scrollWidth<=e.clientWidth+1));};
   const check=async(name,run)=>{await run();checks.push(name);console.log('PASS '+name);};
+  const diagnostic=()=>page.getByLabel('Diagnóstico de pagamentos',{exact:true});
+  const reload=async()=>{
+    const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/admin/billing/health');
+    await page.getByRole('button',{name:'Recarregar',exact:true}).click();await response;
+  };
+  const noDiagnostic=()=>page.waitForFunction(()=>!document.querySelector('[aria-label="Diagnóstico de pagamentos"]'));
   try{
     await page.goto(base+'/planos');await page.getByRole('heading',{name:'Planos',exact:true}).waitFor();
+    await check('Diagnóstico traduz as sete falhas de configuração sem exibir chaves',async()=>{
+      const cases=[
+        ['Stripe secret key must match the configured environment.','Confira STRIPE_SECRET'],
+        ['Stripe billing currency must be BRL.','Stripe__Currency=brl'],
+        ['New Stripe checkouts are disabled.','habilite STRIPE_ENABLED'],
+        ['Stripe publishable key must match the configured environment.','Confira STRIPE_PUBLIC'],
+        ['Stripe account ID is required before opening checkout.','Informe STRIPE_ACCOUNT_ID'],
+        ['Stripe webhook signing secret is required before opening checkout.','Configure STRIPE_WEBHOOK_SECRET'],
+        ['Stripe WebBaseUrl must be HTTPS (localhost is allowed in test mode).','DOMAIN_WEB'],
+      ];
+      for(const [error,help] of cases){
+        billingHealth={...healthyBilling,stripeConfigured:false,stripeConfigurationError:error};
+        await reload();await diagnostic().getByText(help,{exact:false}).waitFor();
+        assert(!(await diagnostic().innerText()).includes(error));
+        assert((await diagnostic().innerText()).includes('não confirma conexão com a Stripe'));
+      }
+      await page.screenshot({path:path.join(output,'billing-configuration-desktop.png'),fullPage:true});
+    });
+    await check('Diagnóstico desconhecido ou de API anterior usa orientação segura',async()=>{
+      billingHealth={...healthyBilling,stripeConfigured:false,stripeConfigurationError:'sk_live_synthetic_never_render'};
+      await reload();await diagnostic().getByText('A configuração local da Stripe está incompleta ou incompatível.',{exact:false}).waitFor();
+      assert(!(await page.locator('body').innerText()).includes('sk_live_synthetic_never_render'));
+      billingHealth={...healthyBilling,stripeConfigured:false,stripeNewCheckoutEnabled:false};delete billingHealth.stripeConfigurationError;
+      await reload();await diagnostic().getByText('habilite STRIPE_ENABLED',{exact:false}).waitFor();
+      billingHealth={};await reload();await diagnostic().getByText('Diagnóstico de pagamentos indisponível',{exact:true}).waitFor();
+      assert(await card('Mensal').isVisible());
+    });
+    await check('Falha 404 ou 503 no diagnóstico mantém edição e criação dos planos',async()=>{
+      for(const status of [404,503]){
+        billingStatus=status;await reload();await diagnostic().getByText('Diagnóstico de pagamentos indisponível',{exact:true}).waitFor();
+        await open('Mensal');await dialog().getByLabel('Nome',{exact:true}).fill('Mensal');await save();
+        await page.getByRole('button',{name:'Novo plano',exact:true}).click();await dialog().getByLabel('Nome',{exact:true}).waitFor();await close();
+      }
+      await page.setViewportSize({width:390,height:844});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+      await page.screenshot({path:path.join(output,'billing-diagnostic-unavailable-mobile.png'),fullPage:true});
+      await page.setViewportSize({width:1440,height:1050});billingStatus=200;
+    });
+    await check('Configuração válida e outro provedor não exibem alerta Stripe nem alegam conexão',async()=>{
+      billingHealth={...healthyBilling};await reload();await noDiagnostic();
+      billingHealth={...healthyBilling,newCheckoutProvider:'MercadoPago',stripeConfigured:false,stripeConfigurationError:'New Stripe checkouts are disabled.'};
+      await reload();await noDiagnostic();
+      assert(await card('Mensal').isVisible());
+    });
+    await check('Diagnóstico lento não bloqueia plano nem sobrescreve configuração mais recente',async()=>{
+      billingHealth={...healthyBilling,stripeConfigured:false,stripeConfigurationError:'Stripe account ID is required before opening checkout.'};
+      holdNextHealth=true;await page.getByRole('button',{name:'Recarregar',exact:true}).click();
+      for(let attempt=0;attempt<50&&!delayedHealthStarted;attempt++)await page.waitForTimeout(20);
+      assert(delayedHealthStarted);
+      await open('Mensal');assert(await dialog().getByRole('button',{name:'Salvar alterações',exact:true}).isEnabled());
+      const freshHealth=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/admin/billing/health');
+      billingHealth={...healthyBilling};await save();await freshHealth;
+      await noDiagnostic();releaseDelayedHealth();releaseDelayedHealth=null;await page.waitForTimeout(250);
+      await noDiagnostic();
+    });
     await check('Criação começa desmarcada e apresenta o primeiro mês e a renovação antes de ativar',async()=>{
       await page.getByRole('button',{name:'Novo plano',exact:true}).click();
       assert.equal(await checkbox().isChecked(),false);assert(await checkbox().isDisabled());
@@ -172,6 +242,6 @@ async function main(){
     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
     const report={checks,passed:checks.length,createdPlans:creates.length,updates:updates.length,realPlansChanged:0,errors,unexpected};
     fs.writeFileSync(path.join(output,'plans-promotion-browser-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
-  }finally{releaseDelayedList?.();await browser.close();}
+  }finally{releaseDelayedList?.();releaseDelayedHealth?.();await browser.close();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -40,6 +40,16 @@ export interface AdminHealthResponse {
   timestamp: string;
 }
 
+export interface AdminBillingHealthResponse {
+  newCheckoutProvider: string;
+  stripeNewCheckoutEnabled: boolean;
+  stripeConfigured: boolean;
+  stripeWebhookConfigured: boolean;
+  liveMode: boolean;
+  // Optional while the API deployment that adds the safe diagnostic rolls out.
+  stripeConfigurationError?: string | null;
+}
+
 /// Resposta padronizada de erro do backend (BaseController.BuildError).
 export interface ApiErrorBody {
   success: false;

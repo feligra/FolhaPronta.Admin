@@ -1,7 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { tokenService } from "@/services/tokenService";
 import type {
-  LoginRequest, LoginResponse, AdminHealthResponse,
+  LoginRequest, LoginResponse, AdminHealthResponse, AdminBillingHealthResponse,
   AdminUsersListResponse, AdminUserDetail, UserListQuery, AdminUpdateUserBody,
   AdminSubscriptionsListResponse, SubscriptionListQuery,
   AdminPlansListResponse, AdminPlanDetail, AdminUpdatePlanBody, ActivityTypeName,
@@ -132,6 +132,18 @@ export const adminApi = {
   health: async (): Promise<AdminHealthResponse> => {
     const res = await api.get<AdminHealthResponse>("/admin/health");
     return res.data;
+  },
+
+  billing: {
+    health: async (): Promise<AdminBillingHealthResponse> => {
+      const { data } = await api.get<AdminBillingHealthResponse>("/admin/billing/health");
+      if (!data || typeof data.newCheckoutProvider !== "string"
+        || [data.stripeNewCheckoutEnabled, data.stripeConfigured, data.stripeWebhookConfigured, data.liveMode]
+          .some(value => typeof value !== "boolean")
+        || (data.stripeConfigurationError != null && typeof data.stripeConfigurationError !== "string"))
+        throw new Error("Invalid billing diagnostic response");
+      return data;
+    },
   },
 
   users: {
