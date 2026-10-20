@@ -158,6 +158,95 @@ async function main() {
       assert.equal(new URL(page.url()).search, '');
       await page.screenshot({ path: path.join(output, 'logs-desktop.png'), fullPage: false });
     });
+    await check('Failure reason and next action are visible without opening technical details', async () => {
+      await open(f => { f.items = [item(1, { level: 'Error', message: 'Checkout não concluído. Configuração: [oculto]',
+        exceptionType: 'InvalidOperationException', properties: {
+          FailureCode: 'stripe_secret_key_environment_mismatch',
+          FailureReason: 'A chave secreta não corresponde ao ambiente de produção.',
+          SuggestedAction: 'Confira STRIPE_SECRET_KEY e STRIPE_LIVE_MODE e publique novamente a API.',
+          ErrorMessage: 'Stripe secret key must match the configured environment.',
+          InnerErrors: '1. InvalidOperationException: configuração local incompatível.',
+          ErrorStackTrace: 'StripeSettings.ValidateForCheckout (StripeSettings.cs:84)\nStripeCheckoutService.CreateAsync (StripeCheckoutService.cs:102)',
+          CheckoutStage: 'ValidateConfiguration', HttpStatus: '503', TraceId: '0123456789abcdef0123456789abcdef',
+          UserId: 'de7164f1-bd94-4692-b125-22706156c67d', PlanId: 'plan-synthetic', StripeRequestId: '[oculto]',
+        } })]; });
+      await waitCount(1); await waitPoll();
+      assert(await rows().getByText('A chave secreta não corresponde ao ambiente de produção.', { exact: true }).first().isVisible());
+      assert(await rows().getByText('Confira STRIPE_SECRET_KEY e STRIPE_LIVE_MODE e publique novamente a API.', { exact: true }).first().isVisible());
+      assert((await rows().innerText()).includes('ValidateConfiguration')); assert((await rows().innerText()).includes('503'));
+      assert.equal(await rows().locator('details').getAttribute('open'), null);
+      await page.getByRole('button', { name: 'Expandir todos os detalhes', exact: true }).click();
+      assert(await rows().getByRole('region', { name: 'Erro e causas', exact: true }).isVisible());
+      assert(await rows().getByRole('region', { name: 'Requisição e identificadores', exact: true }).isVisible());
+      assert((await rows().locator('pre').innerText()).includes('StripeSettings.cs:84'));
+      await page.screenshot({ path: path.join(output, 'diagnostic-desktop.png'), fullPage: true });
+      await page.getByRole('button', { name: 'Recolher detalhes', exact: true }).click();
+      assert.equal(await rows().locator('details').getAttribute('open'), null);
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await rows().getByRole('button', { name: 'Copiar diagnóstico', exact: true }).click();
+      await rows().getByRole('button', { name: 'Diagnóstico copiado', exact: true }).waitFor();
+      const copied = await page.evaluate(() => navigator.clipboard.readText());
+      assert(copied.includes('TraceId')); assert(copied.includes('StripeSettings.cs:84')); assert(copied.includes('Próxima ação'));
+      assert(copied.includes('[oculto]')); assert(!copied.includes('synthetic-admin-logs'));
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Expandir todos os detalhes', exact: true }).click();
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await page.screenshot({ path: path.join(output, 'diagnostic-mobile.png'), fullPage: true });
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await page.screenshot({ path: path.join(output, 'diagnostic-mobile-dark.png'), fullPage: true });
+    });
+    await check('Trace correlation clears level filters and includes debug steps in the same request', async () => {
+      const trace = 'abcdef0123456789abcdef0123456789';
+      await open(f => { f.items = [
+        item(1, { level: 'Verbose', message: 'Início da validação', properties: { TraceId: trace, CheckoutStage: 'ValidateConfiguration' } }),
+        item(2, { level: 'Debug', message: 'Plano localizado', properties: { TraceId: trace } }),
+        item(3, { level: 'Error', message: 'Falha no checkout', properties: { TraceId: trace, FailureReason: 'Configuração incompatível.' } }),
+        item(4, { message: 'Outra requisição', properties: { TraceId: 'other-request' } }),
+      ]; });
+      await waitCount(4); await waitPoll();
+      await page.getByRole('combobox').selectOption('Error'); await waitCount(1); await waitPoll();
+      await rows().getByRole('button', { name: 'Ver trajetória desta requisição', exact: true }).click();
+      await waitCount(3); await waitPoll();
+      assert.equal(await page.getByRole('searchbox').inputValue(), trace); assert.equal(await page.getByRole('combobox').inputValue(), '');
+      assert.equal(lists().at(-1).params.search, trace); assert(!lists().at(-1).params.level);
+      assert.deepEqual(await rows().evaluateAll(items => items.map(item => item.dataset.logId)), ['3', '2', '1']);
+      assert.equal((await page.evaluate(() => window.__xhrStats)).max, 1);
+    });
+    await check('Historical configuration diagnosis is translated and distinguished from exception cause', async () => {
+      await open(f => { f.items = [item(1, { level: 'Warning', exceptionType: 'TimeoutException', message: 'Operação falhou por timeout.',
+        properties: { ErrorMessage: 'The operation timed out.', ConfigurationError: 'Stripe secret key must match the configured environment.' } })]; });
+      await waitCount(1); await waitPoll();
+      assert((await rows().locator('[data-log-diagnostic]').innerText()).includes('The operation timed out.'));
+      const local = await rows().locator('[data-log-configuration]').innerText();
+      assert(local.includes('Verificação de configuração local')); assert(local.includes('tem prioridade sobre STRIPE_SECRET'));
+      assert(local.includes('não confirma uma resposta da Stripe')); assert(!local.includes('O timeout foi causado'));
+      assert.equal(await rows().getByRole('button', { name: 'Ver trajetória desta requisição', exact: true }).count(), 0);
+    });
+    await check('Clipboard denial is recoverable and secret-hidden correlation is not offered', async () => {
+      await open(f => { f.items = [item(1, { properties: { TraceId: '[oculto]', RequestId: '[oculto]' } })]; });
+      await waitCount(1); await waitPoll();
+      await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }));
+      await rows().getByRole('button', { name: 'Copiar diagnóstico', exact: true }).click();
+      await rows().getByText('O navegador bloqueou a cópia.', { exact: false }).waitFor();
+      assert.equal(await rows().getByRole('button', { name: 'Ver trajetória desta requisição', exact: true }).count(), 0);
+      await rows().getByText('Detalhes do registro #1', { exact: true }).click();
+      assert(await rows().getByRole('region', { name: 'Requisição e identificadores', exact: true }).isVisible());
+    });
+    await check('Diagnostic fields, nested causes, stack and action render hostile strings only as text', async () => {
+      const unsafe = '<img src=x onerror="window.__diagnosticXss=1">';
+      await open(f => { f.items = [item(1, { level: 'Error', properties: {
+        FailureReason: unsafe, SuggestedAction: unsafe, ErrorMessage: unsafe, InnerErrors: unsafe,
+        ErrorStackTrace: unsafe + '\n' + 'Z'.repeat(2000), TraceId: 'trace-test', CheckoutStage: unsafe,
+        ['__proto__']: 'safe text', constructor: 'safe text',
+      } })]; });
+      await waitCount(1); await waitPoll();
+      await page.getByRole('button', { name: 'Expandir todos os detalhes', exact: true }).click();
+      assert.equal(await rows().locator('img,script').count(), 0); assert.equal(await page.evaluate(() => window.__diagnosticXss), undefined);
+      assert((await rows().innerText()).includes('__proto__')); assert((await rows().innerText()).includes('constructor'));
+      assert((await rows().innerText()).includes(unsafe)); await page.setViewportSize({ width: 320, height: 720 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    });
     await check('Debounced phrase search, case insensitive backend filtering and level', async () => {
       await open(f => f.items.push(item(151, { message: 'Pagamento RECUSADO pelo emissor', level: 'Error' })));
       await waitPoll(); const before = lists().length;
