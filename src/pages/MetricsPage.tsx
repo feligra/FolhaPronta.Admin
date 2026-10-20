@@ -10,6 +10,7 @@ import {
   ACTIVITY_TYPE_LABEL, SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_TONE,
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
+import { MarketingMetrics } from "@/components/MarketingMetrics";
 
 export default function MetricsPage() {
   const [data, setData] = useState<MetricsResponse | null>(null);
@@ -101,6 +102,7 @@ export default function MetricsPage() {
             />
           </section>
 
+          {data.marketing && <MarketingMetrics data={data.marketing} />}
           {/* Linha 2 — Detalhamento por área */}
           <section className="grid gap-4 lg:grid-cols-2">
             {/* Usuários */}

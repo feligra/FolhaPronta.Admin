@@ -438,7 +438,29 @@ export interface EmailsMetrics {
   skippedDev30d: number;
 }
 
+export interface MarketingMetricsData {
+  since: string;
+  consentedVisits: number; registeredVisits: number; planViewVisits: number;
+  registrations: number; registeredPayers: number; trials: number; trialPayers: number;
+  activatedUsers: number; checkouts: number; paidCheckouts: number; unpaidCheckoutsOver24h: number;
+  newPayers: number; renewals: number; cancelledSubscriptions: number;
+  acquisitionRevenue: number; recurringRevenue: number; refundedRevenue: number;
+  visitRegistrationRate: number | null; registrationPaidRate: number | null;
+  checkoutPaidRate: number | null; trialPaidRate: number | null; paymentApprovalRate: number | null;
+  averageHoursToFirstPayment: number | null; cac: number | null; roas: number | null;
+  capiEnabled: boolean; deliveryMode: string; configurationIssue: string | null;
+  deliveryStatus: Record<string, number>;
+  campaigns: { source: string; medium: string; campaign: string; visits: number;
+    registrations: number; checkouts: number; newPayers: number; revenue: number }[];
+}
+
+export interface MarketingDelivery {
+  id: string; eventName: string; eventId: string; eventTime: string; status: string;
+  attempts: number; lastError: string | null; deliveryMode: string;
+}
+
 export interface MetricsResponse {
+  marketing?: MarketingMetricsData;
   users: UsersMetrics;
   subscriptions: SubscriptionsMetrics;
   payments: PaymentsMetrics;
