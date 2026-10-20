@@ -12,6 +12,7 @@ import MetricsPage from "@/pages/MetricsPage";
 import EmailLogsPage from "@/pages/EmailLogsPage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import SendEmailPage from "@/pages/SendEmailPage";
+import SystemLogsPage from "@/pages/SystemLogsPage";
 
 export default function App() {
   const location = useLocation();
@@ -95,6 +96,7 @@ export default function App() {
         />
         <Route path="/notificacoes" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="/enviar-email" element={<ProtectedRoute><SendEmailPage /></ProtectedRoute>} />
+        <Route path="/logs" element={<ProtectedRoute><SystemLogsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/clientes" replace />} />
       </Routes>
     </AdminLayout>

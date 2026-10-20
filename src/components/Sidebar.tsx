@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell, Send,
+  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell, Send, ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -24,6 +24,7 @@ const NAV: NavItem[] = [
   { to: "/emails", label: "Logs de email", icon: Mail },
   { to: "/notificacoes", label: "Notificações", icon: Bell },
   { to: "/health", label: "Saúde do painel", icon: Activity },
+  { to: "/logs", label: "Logs do sistema", icon: ScrollText },
 ];
 
 export function Sidebar() {

@@ -12,6 +12,7 @@ import type {
   MetricsResponse, AdminEmailLogsResponse, EmailLogsQuery,
   NotificationRecipient, NotificationRecipientBody, NotificationDeliveryStatus,
   AdminEmailOptions, AdminEmailDraft, AdminEmailPreview, AdminSendEmailBody, AdminEmailBatchResult,
+  AdminLogsQuery, AdminLogsResponse, AdminLogsLiveResponse,
 } from "@/types";
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "https://localhost:7166") + "/api";
@@ -129,6 +130,19 @@ export const authApi = {
 
 // ── Admin ───────────────────────────────────────────────────────────────
 export const adminApi = {
+  logs: {
+    list: async (query: AdminLogsQuery, signal?: AbortSignal): Promise<AdminLogsResponse> => {
+      const { data } = await api.get<AdminLogsResponse>("/admin/logs", { params: query, signal, timeout: 30000 });
+      validateLogsResponse(data);
+      return data;
+    },
+    live: async (query: Omit<AdminLogsQuery, "before"> & { after: number; waitSeconds: number }, signal?: AbortSignal): Promise<AdminLogsLiveResponse> => {
+      const { data } = await api.get<AdminLogsLiveResponse>("/admin/logs/live", { params: query, signal, timeout: 30000 });
+      validateLogsResponse(data);
+      if (typeof data.hasMore !== "boolean" || typeof data.resetRequired !== "boolean") throw new Error("Invalid log stream response");
+      return data;
+    },
+  },
   health: async (): Promise<AdminHealthResponse> => {
     const res = await api.get<AdminHealthResponse>("/admin/health");
     return res.data;
@@ -305,3 +319,20 @@ export const adminApi = {
     },
   },
 };
+
+function validateLogsResponse(data: AdminLogsResponse) {
+  const validId = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
+  if (!data || !Array.isArray(data.items) || !validId(data.cursor)
+    || (data.instanceId !== undefined && typeof data.instanceId !== "string")
+    || (data.nextBefore !== null && !validId(data.nextBefore))
+    || !validId(data.capacity) || !Number.isFinite(data.retentionDays) || data.retentionDays < 0
+    || !validId(data.droppedCount) || typeof data.persistenceAvailable !== "boolean"
+    || (data.oldestAvailableAt !== null && typeof data.oldestAvailableAt !== "string")
+    || data.items.some(item => !item || !validId(item.id) || typeof item.timestamp !== "string"
+      || !["Verbose", "Debug", "Information", "Warning", "Error", "Fatal"].includes(item.level)
+      || typeof item.source !== "string" || typeof item.message !== "string"
+      || (item.exceptionType !== null && typeof item.exceptionType !== "string")
+      || !item.properties || typeof item.properties !== "object" || Array.isArray(item.properties)
+      || Object.values(item.properties).some(value => typeof value !== "string")))
+    throw new Error("Invalid log response");
+}

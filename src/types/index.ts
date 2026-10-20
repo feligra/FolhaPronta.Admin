@@ -50,6 +50,38 @@ export interface AdminBillingHealthResponse {
   stripeConfigurationError?: string | null;
 }
 
+export type SystemLogLevel = "Verbose" | "Debug" | "Information" | "Warning" | "Error" | "Fatal";
+export interface SystemLogEntry {
+  id: number;
+  timestamp: string;
+  level: SystemLogLevel;
+  source: string;
+  message: string;
+  exceptionType: string | null;
+  properties: Record<string, string>;
+}
+export interface AdminLogsResponse {
+  instanceId?: string;
+  items: SystemLogEntry[];
+  nextBefore: number | null;
+  cursor: number;
+  capacity: number;
+  retentionDays: number;
+  oldestAvailableAt: string | null;
+  droppedCount: number;
+  persistenceAvailable: boolean;
+}
+export interface AdminLogsLiveResponse extends AdminLogsResponse {
+  hasMore: boolean;
+  resetRequired: boolean;
+}
+export interface AdminLogsQuery {
+  search?: string;
+  level?: SystemLogLevel;
+  before?: number;
+  limit?: number;
+}
+
 /// Resposta padronizada de erro do backend (BaseController.BuildError).
 export interface ApiErrorBody {
   success: false;
