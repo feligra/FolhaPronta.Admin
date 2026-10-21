@@ -264,9 +264,20 @@ export interface AdminClassroom {
   activeWeeklyPlanId?: string | null;
 }
 
+export interface CheckoutProgress {
+  subscriptionId: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  status: "AwaitingConfirmation" | "PaymentFailed";
+  completedAt: string;
+  canCancel: false;
+}
+
 export interface AdminUserDetail {
   user: AdminUserProfile;
   currentSubscription: AdminSubscription | null;
+  checkoutProgress?: CheckoutProgress | null;
   payments: AdminPaymentRecord[];
   totalActivitiesGenerated: number;
   activitiesByType: AdminActivityCount[];
@@ -298,6 +309,7 @@ export interface AdminLoginHistoryResponse {
 
 // ── Admin · Subscriptions ─────────────────────────────────────────────
 export interface AdminSubscriptionListItem extends AdminSubscriptionProvider {
+  checkoutProgress?: CheckoutProgress | null;
   id: string;
   userId: string;
   userName: string;

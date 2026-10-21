@@ -31,7 +31,7 @@ export const SUBSCRIPTION_STATUS_TONE: Record<SubscriptionStatus, "erva" | "amar
 
 export const PAYMENT_STATUS_LABEL: Record<PaymentRecordStatus, string> = {
   Pending: "Pendente",
-  InProcess: "Em análise",
+  InProcess: "Em processamento",
   Approved: "Aprovado",
   Rejected: "Recusado",
   Refunded: "Reembolsado",

@@ -13,6 +13,7 @@ import { SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_TONE } from "@/utils/lab
 import { StatusPill } from "@/components/StatusPill";
 import { BillingProviderReference } from "@/components/BillingProviderReference";
 import { canCancelSubscription, subscriptionReference } from "@/utils/billing";
+import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
 
 const PAGE_SIZE = 20;
 
@@ -44,6 +45,7 @@ export default function SubscriptionsPage() {
 
   // Debounce do search (igual CustomersPage).
   const loadVersion = useRef(0);
+  const activeLoads = useRef(0);
   useEffect(() => () => { loadVersion.current++; }, []);
   useEffect(() => { setSearchInput(search); }, [search]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,10 +65,11 @@ export default function SubscriptionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput, search, setParams]);
 
-  const load = async () => {
+  const load = async (background = false) => {
+    if (background && (activeLoads.current > 0 || modal || searchInput.trim() !== search)) return;
+    activeLoads.current++;
     const version = ++loadVersion.current;
-    setLoading(true);
-    setError(null);
+    if (!background) { setLoading(true); setError(null); }
     try {
       const r = await adminApi.subscriptions.list({
         search: search || undefined,
@@ -85,18 +88,22 @@ export default function SubscriptionsPage() {
         return;
       }
       setData(r);
+      setError(null);
     } catch (err: unknown) {
       if (version !== loadVersion.current) return;
       const msg =
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar assinaturas.";
-      setError(msg);
+      if (!background) setError(msg);
     } finally {
+      activeLoads.current--;
       if (version === loadVersion.current) setLoading(false);
     }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [search, status, page]);
+  useVisiblePageRefresh(() => { void load(true); },
+    data?.items.some(s => s.checkoutProgress || s.status === "PendingPayment") ? 3_000 : 15_000);
 
   const updateFilter = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
@@ -131,7 +138,7 @@ export default function SubscriptionsPage() {
             Uma assinatura atual por cliente. Cancele, estenda ou pesquise pelo nome ou e-mail.
           </p>
         </div>
-        <button onClick={load} className="btn-ghost" title="Recarregar">
+        <button onClick={() => void load()} className="btn-ghost" title="Recarregar">
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Recarregar
         </button>
@@ -291,8 +298,13 @@ function Row({
       <td className="px-4 py-3 text-sm text-tinta">R$ {formatPrice(sub.monthlyAmount)}/{sub.billingFrequencyMonths === 12 ? "ano" : "mês"}</td>
       <td className="px-4 py-3">
         <StatusPill tone={SUBSCRIPTION_STATUS_TONE[sub.status]}>
-          {SUBSCRIPTION_STATUS_LABEL[sub.status]}
+          {sub.checkoutProgress?.subscriptionId === sub.id
+            ? sub.checkoutProgress.status === "PaymentFailed" ? "Pagamento não confirmado" : "Em processamento"
+            : SUBSCRIPTION_STATUS_LABEL[sub.status]}
         </StatusPill>
+        {sub.checkoutProgress && sub.checkoutProgress.subscriptionId !== sub.id && (
+          <p className="mt-1 text-xs text-cinza">Nova contratação {sub.checkoutProgress.status === "PaymentFailed" ? "com pagamento não confirmado" : "em processamento"}: {sub.checkoutProgress.planName}</p>
+        )}
       </td>
       <td className="px-4 py-3 text-xs text-cinza">
         <div>{formatDate(sub.currentPeriodEnd)}</div>
@@ -338,7 +350,9 @@ function MobileCard({
           <div className="truncate text-xs text-cinza">{sub.userEmail}</div>
         </Link>
         <StatusPill tone={SUBSCRIPTION_STATUS_TONE[sub.status]}>
-          {SUBSCRIPTION_STATUS_LABEL[sub.status]}
+          {sub.checkoutProgress?.subscriptionId === sub.id
+            ? sub.checkoutProgress.status === "PaymentFailed" ? "Pagamento não confirmado" : "Em processamento"
+            : SUBSCRIPTION_STATUS_LABEL[sub.status]}
         </StatusPill>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-cinza">
@@ -346,6 +360,9 @@ function MobileCard({
         <span>até {formatDate(sub.currentPeriodEnd)}</span>
       </div>
       <BillingProviderReference provider={sub.provider} reference={subscriptionReference(sub)} />
+      {sub.checkoutProgress && sub.checkoutProgress.subscriptionId !== sub.id && (
+        <p className="text-xs text-cinza">Nova contratação {sub.checkoutProgress.status === "PaymentFailed" ? "com pagamento não confirmado" : "em processamento"}: {sub.checkoutProgress.planName}</p>
+      )}
       <div className="flex gap-2 pt-1">
         <button
           onClick={onExtend}

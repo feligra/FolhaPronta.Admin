@@ -57,12 +57,14 @@ export default function CustomerDetailPage() {
   // Modais de edição/exclusão do USUÁRIO (não da sub).
   const [editingUser, setEditingUser] = useState(false);
   const [deletingUser, setDeletingUser] = useState(false);
+  const backgroundRefreshBlocked = useRef(false);
+  backgroundRefreshBlocked.current = !!subAction || editingUser || deletingUser;
   const loadVersion = useRef(0);
   const activeLoads = useRef(0);
   useEffect(() => () => { loadVersion.current++; }, []);
 
   const load = async (background = false) => {
-    if (!id || (background && (activeLoads.current > 0 || confirmingEmailRef.current))) return;
+    if (!id || (background && (activeLoads.current > 0 || confirmingEmailRef.current || backgroundRefreshBlocked.current))) return;
     activeLoads.current++;
     const version = ++loadVersion.current;
     if (!background) {
@@ -71,7 +73,10 @@ export default function CustomerDetailPage() {
     }
     try {
       const r = await adminApi.users.detail(id);
-      if (version === loadVersion.current) { setData(r); setError(null); }
+      // A pending refresh must not replace the subscription targeted by an open action.
+      if (version === loadVersion.current && (!background || !backgroundRefreshBlocked.current)) {
+        setData(r); setError(null);
+      }
     } catch (err: unknown) {
       if (version !== loadVersion.current) return;
       const msg =
@@ -123,7 +128,9 @@ export default function CustomerDetailPage() {
     return () => { loadVersion.current++; };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [id]);
-  useVisiblePageRefresh(() => { void load(true); });
+  const awaitingPayment = !!data?.checkoutProgress || data?.currentSubscription?.status === "PendingPayment"
+    || data?.payments.some(p => p.status === "Pending" || p.status === "InProcess");
+  useVisiblePageRefresh(() => { void load(true); }, awaitingPayment || tab === "payments" ? 3_000 : 30_000);
 
   if (loading) {
     return (
@@ -153,7 +160,11 @@ export default function CustomerDetailPage() {
     );
   }
 
-  const { user, currentSubscription, payments, totalActivitiesGenerated, activitiesByType, classrooms, recentActivities = [] } = data;
+  const { user, currentSubscription, checkoutProgress, payments, totalActivitiesGenerated, activitiesByType, classrooms, recentActivities = [] } = data;
+  // This row represents the verified checkout while its invoice is being synchronized.
+  // It is replaced by the real payment record, never counted as received revenue.
+  const processingWithoutRecord = checkoutProgress?.status === "AwaitingConfirmation"
+    && !payments.some(p => p.subscriptionId === checkoutProgress.subscriptionId);
 
   return (
     <div className="space-y-6">
@@ -212,6 +223,21 @@ export default function CustomerDetailPage() {
 
       {!user.emailConfirmed && <EmailNotConfirmedBanner key={`${user.id}:${user.email}`} userId={user.id}
         email={user.email} isActive={user.isActive} confirming={confirmingEmail} onConfirm={() => void confirmCurrentEmail()} />}
+
+      {checkoutProgress && (
+        <div role="status" className="flex items-start gap-3 rounded-md border border-amarelo/40 bg-amarelo/10 p-4 text-sm">
+          {checkoutProgress.status === "PaymentFailed"
+            ? <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            : <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin" />}
+          <div className="min-w-0">
+            <p className="font-semibold">{checkoutProgress.status === "PaymentFailed" ? "Pagamento não confirmado" : "Pagamento em processamento"}</p>
+            <p className="mt-1 break-words">{checkoutProgress.planName} · R$ {formatPrice(checkoutProgress.amount)} · Stripe</p>
+            <p className="mt-1 text-cinza">{checkoutProgress.status === "PaymentFailed"
+              ? "A Stripe informou uma falha ou cancelamento da cobrança. Consulte o motivo em Pagamentos."
+              : "Checkout concluído. Aguardando a confirmação do pagamento. Esta tela será atualizada automaticamente."}</p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <nav className="flex gap-1 border-b border-tintaSoft-100 overflow-x-auto">
@@ -292,7 +318,9 @@ export default function CustomerDetailPage() {
                   </p>
                 </div>
                 <StatusPill tone={SUBSCRIPTION_STATUS_TONE[currentSubscription.status]}>
-                  {SUBSCRIPTION_STATUS_LABEL[currentSubscription.status]}
+                  {checkoutProgress?.subscriptionId === currentSubscription.id
+                    ? checkoutProgress.status === "PaymentFailed" ? "Pagamento não confirmado" : "Em processamento"
+                    : SUBSCRIPTION_STATUS_LABEL[currentSubscription.status]}
                 </StatusPill>
               </div>
               <div className="grid gap-3 pt-2 sm:grid-cols-2">
@@ -423,11 +451,24 @@ export default function CustomerDetailPage() {
       )}
 
       {tab === "payments" && (
-        <Section title={`Pagamentos (${payments.length})`}>
-          {payments.length === 0 ? (
+        <Section title={`Pagamentos (${payments.length + (processingWithoutRecord ? 1 : 0)})`}>
+          {payments.length === 0 && !processingWithoutRecord ? (
             <p className="text-sm text-cinza">Nenhum pagamento registrado.</p>
           ) : (
             <ul className="divide-y divide-tintaSoft-100">
+              {processingWithoutRecord && checkoutProgress && (
+                <li className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm" data-processing-checkout>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words font-medium text-tinta">Assinatura {checkoutProgress.planName}</p>
+                    <p className="mt-0.5 text-xs text-cinza">{formatDateTime(checkoutProgress.completedAt)} · Stripe</p>
+                    <p className="mt-1 text-xs text-cinza">Aguardando a confirmação do pagamento.</p>
+                  </div>
+                  <div className="whitespace-nowrap text-right">
+                    <p className="font-semibold text-tinta">R$ {formatPrice(checkoutProgress.amount)}</p>
+                    <StatusPill tone="amarelo" className="mt-1">Em processamento</StatusPill>
+                  </div>
+                </li>
+              )}
               {payments.map((p) => (
                 <li key={p.id} className="flex items-start justify-between gap-3 py-3 text-sm">
                   <div className="min-w-0 flex-1">
@@ -450,7 +491,8 @@ export default function CustomerDetailPage() {
                   <div className="whitespace-nowrap text-right">
                     <p className="font-semibold text-tinta">R$ {formatPrice(p.amount)}</p>
                     <StatusPill tone={PAYMENT_STATUS_TONE[p.status]} className="mt-1">
-                      {PAYMENT_STATUS_LABEL[p.status]}
+                      {checkoutProgress?.status === "AwaitingConfirmation" && checkoutProgress.subscriptionId === p.subscriptionId && p.status === "Pending"
+                        ? "Em processamento" : PAYMENT_STATUS_LABEL[p.status]}
                     </StatusPill>
                   </div>
                 </li>
