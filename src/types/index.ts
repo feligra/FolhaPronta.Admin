@@ -48,6 +48,16 @@ export interface AdminBillingHealthResponse {
   liveMode: boolean;
   // Optional while the API deployment that adds the safe diagnostic rolls out.
   stripeConfigurationError?: string | null;
+  stripeCredentialDiagnostics?: StripeCredentialDiagnostics | null;
+}
+
+export interface StripeCredentialDiagnostics {
+  expectedEnvironment: "live" | "test";
+  secretKeyType: "secret" | "restricted" | "missing" | "invalid";
+  secretKeyEnvironment: "live" | "test" | "unknown";
+  publishableKeyEnvironment: "live" | "test" | "unknown";
+  secretKeyHasOuterWhitespace: boolean;
+  publishableKeyHasOuterWhitespace: boolean;
 }
 
 export type SystemLogLevel = "Verbose" | "Debug" | "Information" | "Warning" | "Error" | "Fatal";

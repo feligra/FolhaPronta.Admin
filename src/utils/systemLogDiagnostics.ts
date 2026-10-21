@@ -5,12 +5,28 @@ import { formatDateTime } from "@/utils/format";
 // These messages describe a local configuration check, not a Stripe API response.
 const CONFIGURATION_HELP: Record<string, { reason: string; action: string }> = {
   "Stripe secret key must match the configured environment.": {
-    reason: "A chave secreta está ausente ou não corresponde ao ambiente configurado.",
-    action: "Confira STRIPE_SECRET_KEY (tem prioridade sobre STRIPE_SECRET) e STRIPE_LIVE_MODE. Use sk_test_ com false ou sk_live_ com true; depois publique novamente a API.",
+    reason: "A chave secreta não corresponde ao ambiente configurado. Em versões antigas da API, esse registro também podia indicar chave ausente ou formato inválido.",
+    action: "Confira STRIPE_SECRET e STRIPE_LIVE_MODE. STRIPE_SECRET_KEY também é aceito e, se definido, tem prioridade sobre STRIPE_SECRET. Chaves de teste exigem false; chaves de produção, true. Depois publique novamente a API.",
+  },
+  "Stripe secret key is missing.": {
+    reason: "A API não recebeu a chave secreta.",
+    action: "Confira se STRIPE_SECRET do GitHub Actions está sendo repassado ao contêiner da API. STRIPE_SECRET_KEY também é aceito. Após ajustar, publique novamente a API.",
+  },
+  "Stripe secret key has an invalid format.": {
+    reason: "A chave secreta recebida pela API tem formato inválido.",
+    action: "Confira STRIPE_SECRET: use uma chave secreta sk_ ou restrita rk_, sem aspas ou espaços internos. STRIPE_SECRET_KEY também é aceito. Publique novamente a API após ajustar.",
   },
   "Stripe publishable key must match the configured environment.": {
-    reason: "A chave pública está ausente ou não corresponde ao ambiente configurado.",
-    action: "Confira STRIPE_PUBLISHABLE_KEY (ou STRIPE_PUBLIC) e STRIPE_LIVE_MODE. As chaves pública e secreta devem ser da mesma conta e do mesmo ambiente. Publique novamente a API.",
+    reason: "A chave pública não corresponde ao ambiente configurado. Em versões antigas da API, esse registro também podia indicar chave ausente ou formato inválido.",
+    action: "Confira STRIPE_PUBLIC (ou STRIPE_PUBLISHABLE_KEY) e STRIPE_LIVE_MODE. As chaves pública e secreta devem ser da mesma conta e do mesmo ambiente. Publique novamente a API.",
+  },
+  "Stripe publishable key is missing.": {
+    reason: "A API não recebeu a chave pública.",
+    action: "Confira se STRIPE_PUBLIC do GitHub Actions está sendo repassado ao contêiner da API. STRIPE_PUBLISHABLE_KEY também é aceito. Após ajustar, publique novamente a API.",
+  },
+  "Stripe publishable key has an invalid format.": {
+    reason: "A chave pública recebida pela API tem formato inválido.",
+    action: "Confira STRIPE_PUBLIC: use uma chave pk_, sem aspas ou espaços internos. STRIPE_PUBLISHABLE_KEY também é aceito. Publique novamente a API após ajustar.",
   },
   "Stripe billing currency must be BRL.": {
     reason: "A moeda configurada para a integração é incompatível.",

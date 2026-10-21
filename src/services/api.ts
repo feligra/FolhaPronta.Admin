@@ -156,6 +156,15 @@ export const adminApi = {
           .some(value => typeof value !== "boolean")
         || (data.stripeConfigurationError != null && typeof data.stripeConfigurationError !== "string"))
         throw new Error("Invalid billing diagnostic response");
+      const credentials = data.stripeCredentialDiagnostics;
+      if (credentials != null && (typeof credentials !== "object" || Array.isArray(credentials)
+        || !["live", "test"].includes(credentials.expectedEnvironment)
+        || !["secret", "restricted", "missing", "invalid"].includes(credentials.secretKeyType)
+        || !["live", "test", "unknown"].includes(credentials.secretKeyEnvironment)
+        || !["live", "test", "unknown"].includes(credentials.publishableKeyEnvironment)
+        || typeof credentials.secretKeyHasOuterWhitespace !== "boolean"
+        || typeof credentials.publishableKeyHasOuterWhitespace !== "boolean"))
+        throw new Error("Invalid credential diagnostic response");
       return data;
     },
   },

@@ -36,6 +36,11 @@ async function main() {
     localStorage.setItem('fp_admin_user', JSON.stringify({ id: 'admin', name: 'Admin', email: 'admin@example.test', role: 'Admin', userType: 1 }));
   });
   const writes = [], unexpected = [], errors = [], checks = [];
+  const validHealth = { newCheckoutProvider: 'Stripe', stripeNewCheckoutEnabled: true,
+    stripeConfigured: true, stripeWebhookConfigured: true, liveMode: true, stripeConfigurationError: null };
+  const validCredentials = { expectedEnvironment: 'live', secretKeyType: 'secret', secretKeyEnvironment: 'live',
+    publishableKeyEnvironment: 'live', secretKeyHasOuterWhitespace: false, publishableKeyHasOuterWhitespace: false };
+  let billingHealth = { ...validHealth };
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     if (!url.pathname.startsWith('/api/')) {
@@ -71,6 +76,7 @@ async function main() {
     }
     if (request.method() === 'GET' && url.pathname === '/api/admin/plans')
       return reply({ items: [{ id: 'plan', name: 'Mensal', slug: 'mensal', monthlyPrice: 29.9, isActive: true }] });
+    if (request.method() === 'GET' && url.pathname === '/api/admin/billing/health') return reply(billingHealth);
     unexpected.push(`${request.method()} ${url.pathname}`);
     return route.fulfill({ status: 404, headers, json: {} });
   });
@@ -98,7 +104,102 @@ async function main() {
     assert.equal(writes.at(-1).body.immediate, expectedImmediate);
   };
   async function check(name, run) { await run(); checks.push({ name, passed: true }); process.stdout.write(`PASS ${name}\n`); }
+  const plans = async health => {
+    billingHealth = health;
+    await page.goto(`${base}/planos`);
+    await page.getByRole('heading', { name: 'Mensal', exact: true }).waitFor();
+  };
+  const diagnosis = () => page.getByRole('alert', { name: 'Diagnóstico de pagamentos', exact: true });
   try {
+    await check('Planos distingue chave secreta ausente na API e orienta alias existente', async () => {
+      await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: 'Stripe secret key is missing.',
+        stripeCredentialDiagnostics: { ...validCredentials, secretKeyType: 'missing', secretKeyEnvironment: 'unknown' } });
+      await diagnosis().waitFor();
+      const body = await diagnosis().innerText();
+      assert(body.includes('A API não recebeu a chave secreta.')); assert(body.includes('Ausente na API'));
+      assert(body.includes('STRIPE_SECRET do GitHub Actions')); assert(body.includes('ao contêiner da API'));
+      assert(body.includes('Credenciais recebidas pela API')); assert(body.includes('Produção')); assert(body.includes('Não identificado'));
+      assert(await page.getByRole('button', { name: 'Novo plano', exact: true }).isEnabled());
+    });
+    await check('Planos mostra ambientes esperado e recebido sem expor valores ou extras de credenciais', async () => {
+      await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: 'Stripe secret key must match the configured environment.',
+        stripeCredentialDiagnostics: { ...validCredentials, secretKeyEnvironment: 'test', unsafeValue: 'sk_test_must_never_render' } });
+      await diagnosis().waitFor();
+      const credentials = diagnosis().locator('[data-stripe-credentials]');
+      assert((await credentials.innerText()).includes('Ambiente esperado')); assert((await credentials.innerText()).includes('Produção'));
+      assert((await credentials.innerText()).includes('Teste')); assert((await credentials.innerText()).includes('chave secreta padrão'));
+      assert(!(await page.locator('body').innerText()).includes('sk_test_must_never_render'));
+      await page.screenshot({ path: path.join(output, 'stripe-credential-diagnostics-desktop.png'), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await page.screenshot({ path: path.join(output, 'stripe-credential-diagnostics-mobile.png'), fullPage: true });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    });
+    await check('Formato inválido é explicado separadamente de chave ausente e ambiente diferente', async () => {
+      await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: 'Stripe secret key has an invalid format.',
+        stripeCredentialDiagnostics: { ...validCredentials, secretKeyType: 'invalid', secretKeyEnvironment: 'unknown' } });
+      await diagnosis().waitFor();
+      const body = await diagnosis().innerText();
+      assert(body.includes('A API recebeu uma chave secreta em formato inválido.'));
+      assert(body.includes('Presente · formato inválido')); assert(body.includes('sk_ ou restrita rk_'));
+      assert(!body.includes('A chave recebida pela API pertence a outro ambiente.'));
+    });
+    await check('Chave restrita compatível e espaços externos normalizados permanecem visíveis sem alerta de falha', async () => {
+      await plans({ ...validHealth, stripeCredentialDiagnostics: { ...validCredentials, secretKeyType: 'restricted',
+        secretKeyHasOuterWhitespace: true, publishableKeyHasOuterWhitespace: true } });
+      const status = page.getByRole('status', { name: 'Diagnóstico de pagamentos', exact: true }); await status.waitFor();
+      const body = await status.innerText();
+      assert(body.includes('Presente · chave restrita')); assert(body.includes('A API removeu esses espaços externos'));
+      assert(body.includes('não confirma conexão com a Stripe')); assert.equal(await diagnosis().count(), 0);
+    });
+    await check('Chave pública ausente ou inválida recebe orientação precisa para STRIPE_PUBLIC', async () => {
+      for (const [error, expected] of [
+        ['Stripe publishable key is missing.', 'Ausente na API'],
+        ['Stripe publishable key has an invalid format.', 'Presente · formato inválido'],
+      ]) {
+        await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: error,
+          stripeCredentialDiagnostics: { ...validCredentials, publishableKeyEnvironment: 'unknown' } });
+        await diagnosis().waitFor(); const body = await diagnosis().innerText();
+        assert(body.includes(expected)); assert(body.includes('STRIPE_PUBLIC'));
+        assert(body.includes('STRIPE_PUBLISHABLE_KEY também é aceito'));
+      }
+    });
+    await check('Ambiente público desconhecido não é apresentado como chave ausente sem evidência', async () => {
+      await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: 'Stripe secret key is missing.',
+        stripeCredentialDiagnostics: { ...validCredentials, secretKeyType: 'missing', secretKeyEnvironment: 'unknown', publishableKeyEnvironment: 'unknown' } });
+      await diagnosis().waitFor();
+      assert((await diagnosis().innerText()).includes('Presença ou formato não identificado'));
+    });
+    await check('Resposta de API antiga sem diagnóstico de credenciais continua compatível', async () => {
+      await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: 'Stripe billing currency must be BRL.' });
+      await diagnosis().waitFor(); assert((await diagnosis().innerText()).includes('Stripe__Currency=brl'));
+      assert.equal(await page.locator('[data-stripe-credentials]').count(), 0);
+      for (const error of ['Stripe secret key must match the configured environment.', 'Stripe publishable key must match the configured environment.']) {
+        await plans({ ...validHealth, stripeConfigured: false, stripeConfigurationError: error });
+        await diagnosis().waitFor(); const body = await diagnosis().innerText();
+        assert(body.includes('não distingue chave ausente, formato inválido e ambiente incompatível'));
+        assert(body.includes('Publique a versão atualizada da API'));
+        assert(!body.includes('A chave recebida pela API pertence a outro ambiente.'));
+      }
+      await plans(validHealth); await page.getByRole('button', { name: 'Novo plano', exact: true }).waitFor();
+      assert.equal(await page.locator('[data-stripe-credentials]').count(), 0); assert.equal(await diagnosis().count(), 0);
+    });
+    await check('Payload de credenciais inválido falha sem refletir valores e mantém catálogo utilizável', async () => {
+      for (const invalid of [
+        { ...validCredentials, secretKeyType: '<img src=x onerror="window.__diagXss=1">' },
+        { ...validCredentials, expectedEnvironment: 'sk_live_must_never_render' },
+        { ...validCredentials, publishableKeyHasOuterWhitespace: 'true' },
+        [],
+      ]) {
+        await plans({ ...validHealth, stripeCredentialDiagnostics: invalid });
+        await page.getByText('Diagnóstico de pagamentos indisponível', { exact: true }).waitFor();
+        assert(await page.getByRole('button', { name: 'Novo plano', exact: true }).isEnabled());
+        assert(!(await page.locator('body').innerText()).includes('sk_live_must_never_render'));
+        assert.equal(await page.evaluate(() => window.__diagXss), undefined);
+      }
+      await plans({ ...validHealth, stripeCredentialDiagnostics: validCredentials });
+      await page.getByText('Configuração local de pagamentos', { exact: true }).waitFor();
+    });
     await check('Desktop identifica Stripe, Mercado Pago e administrativo com referências públicas', async () => {
       await list();
       for (const text of ['Stripe', 'Mercado Pago', 'Administrativo', 'sub_active', 'mp_legacy', 'cs_test_pending'])

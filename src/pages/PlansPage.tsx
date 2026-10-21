@@ -166,10 +166,14 @@ export default function PlansPage() {
 }
 
 const stripeConfigurationHelp: Record<string, string> = {
-  "Stripe secret key must match the configured environment.": "Confira STRIPE_SECRET (ou STRIPE_SECRET_KEY) e STRIPE_LIVE_MODE: chaves sk_test_ exigem false; chaves sk_live_ exigem true.",
+  "Stripe secret key must match the configured environment.": "A chave recebida pela API pertence a outro ambiente. Confira STRIPE_SECRET e STRIPE_LIVE_MODE: use chaves de teste com false ou de produção com true. STRIPE_SECRET_KEY também é aceito; se definido, tem prioridade sobre STRIPE_SECRET.",
+  "Stripe secret key is missing.": "A API não recebeu a chave secreta. Confira se o deploy repassa STRIPE_SECRET do GitHub Actions ao contêiner da API. STRIPE_SECRET_KEY também é aceito. Publique novamente a API após ajustar o deploy.",
+  "Stripe secret key has an invalid format.": "A API recebeu uma chave secreta em formato inválido. Confira STRIPE_SECRET: use uma chave secreta sk_ ou restrita rk_, sem aspas, espaços internos ou o nome da variável no valor. STRIPE_SECRET_KEY também é aceito.",
   "Stripe billing currency must be BRL.": "Configure a moeda da integração como BRL na API (Stripe__Currency=brl).",
   "New Stripe checkouts are disabled.": "Novas assinaturas Stripe estão desabilitadas. Após conferir a configuração, habilite STRIPE_ENABLED no deploy da API.",
   "Stripe publishable key must match the configured environment.": "Confira STRIPE_PUBLIC (ou STRIPE_PUBLISHABLE_KEY) e STRIPE_LIVE_MODE: use a chave pública do mesmo modo e da mesma conta da chave secreta.",
+  "Stripe publishable key is missing.": "A API não recebeu a chave pública. Confira se o deploy repassa STRIPE_PUBLIC do GitHub Actions ao contêiner da API. STRIPE_PUBLISHABLE_KEY também é aceito. Publique novamente a API após ajustar o deploy.",
+  "Stripe publishable key has an invalid format.": "A API recebeu uma chave pública em formato inválido. Confira STRIPE_PUBLIC: use a chave pk_, sem aspas, espaços internos ou o nome da variável no valor. STRIPE_PUBLISHABLE_KEY também é aceito.",
   "Stripe account ID is required before opening checkout.": "Informe STRIPE_ACCOUNT_ID com o ID acct_ da conta Stripe que possui as chaves configuradas.",
   "Stripe webhook signing secret is required before opening checkout.": "Configure STRIPE_WEBHOOK_SECRET com o segredo whsec_ do destino /api/webhooks/stripe, no mesmo ambiente das chaves.",
   "Stripe WebBaseUrl must be HTTPS (localhost is allowed in test mode).": "Confira o endereço público HTTPS do site na API (DOMAIN_WEB no deploy). HTTP é permitido apenas em localhost no modo de teste.",
@@ -182,14 +186,48 @@ function BillingConfigurationNotice({ health, unavailable }: { health: AdminBill
   </section>;
   if (!health || health.newCheckoutProvider !== "Stripe") return null;
   const error = health.stripeConfigurationError;
-  if (!error && health.stripeNewCheckoutEnabled && health.stripeConfigured) return null;
+  const pending = !!error || !health.stripeNewCheckoutEnabled || !health.stripeConfigured;
+  const credentials = health.stripeCredentialDiagnostics;
+  if (!pending && !credentials) return null;
   const knownError = error && Object.prototype.hasOwnProperty.call(stripeConfigurationHelp, error) ? stripeConfigurationHelp[error] : null;
-  const message = knownError ?? (!health.stripeNewCheckoutEnabled
+  const legacyKeyError = !credentials && (error === "Stripe secret key must match the configured environment."
+    || error === "Stripe publishable key must match the configured environment.");
+  const message = legacyKeyError
+    ? "A verificação local da chave falhou. Esta versão da API não distingue chave ausente, formato inválido e ambiente incompatível. Publique a versão atualizada da API e use Recarregar para ver o diagnóstico detalhado. STRIPE_SECRET e STRIPE_PUBLIC continuam aceitas."
+    : knownError ?? (!health.stripeNewCheckoutEnabled
     ? stripeConfigurationHelp["New Stripe checkouts are disabled."]
     : "A configuração local da Stripe está incompleta ou incompatível. Confira as chaves, STRIPE_ACCOUNT_ID, STRIPE_WEBHOOK_SECRET e STRIPE_LIVE_MODE no deploy da API.");
-  return <section role="alert" aria-label="Diagnóstico de pagamentos" className="card border-amarelo/40 text-sm text-tinta">
-    <p className="flex items-center gap-2 font-semibold"><AlertCircle size={16} aria-hidden />Configuração de pagamentos pendente</p>
-    <p className="mt-2 break-words">{message}</p>
+  const environment = (value: "live" | "test" | "unknown") => value === "live" ? "Produção" : value === "test" ? "Teste" : "Não identificado";
+  const secretType = credentials ? {
+    secret: "Presente · chave secreta padrão",
+    restricted: "Presente · chave restrita",
+    missing: "Ausente na API",
+    invalid: "Presente · formato inválido",
+  }[credentials.secretKeyType] : null;
+  return <section role={pending ? "alert" : "status"} aria-label="Diagnóstico de pagamentos" className={`card text-sm text-tinta ${pending ? "border-amarelo/40" : "border-erva/30"}`}>
+    <p className="flex items-center gap-2 font-semibold">{pending ? <AlertCircle size={16} aria-hidden /> : <CheckCircle2 size={16} aria-hidden />}{pending ? "Configuração de pagamentos pendente" : "Configuração local de pagamentos"}</p>
+    <p className="mt-2 break-words">{pending ? message : "Os campos locais são compatíveis com o ambiente informado."}</p>
+    {credentials && <div className="mt-4 rounded-lg bg-tintaSoft-50 p-3" data-stripe-credentials>
+      <p className="font-semibold">Credenciais recebidas pela API</p>
+      <dl className="mt-2 space-y-2 text-xs">
+        {[
+          ["Ambiente esperado", environment(credentials.expectedEnvironment)],
+          ["Chave secreta", secretType],
+          ["Ambiente da chave secreta", environment(credentials.secretKeyEnvironment)],
+          ["Chave pública", error === "Stripe publishable key is missing." ? "Ausente na API"
+            : error === "Stripe publishable key has an invalid format." ? "Presente · formato inválido"
+              : credentials.publishableKeyEnvironment !== "unknown" ? "Presente" : "Presença ou formato não identificado"],
+          ["Ambiente da chave pública", environment(credentials.publishableKeyEnvironment)],
+        ].map(([label, value]) => <div key={label} className="grid gap-1 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-3">
+          <dt className="text-cinza">{label}</dt><dd className="break-words font-semibold">{value}</dd>
+        </div>)}
+      </dl>
+      {(credentials.secretKeyHasOuterWhitespace || credentials.publishableKeyHasOuterWhitespace) && <p className="mt-3 text-xs">Espaços no início ou no fim detectados: {[
+        credentials.secretKeyHasOuterWhitespace ? "chave secreta" : null,
+        credentials.publishableKeyHasOuterWhitespace ? "chave pública" : null,
+      ].filter(Boolean).join(" e ")}. A API removeu esses espaços externos antes de usar as chaves.</p>}
+      <p className="mt-3 text-xs text-cinza">A classificação usa o formato recebido pela API. Os valores das chaves não são exibidos. As variáveis STRIPE_SECRET e STRIPE_PUBLIC são aceitas pelo sistema.</p>
+    </div>}
     <p className="mt-2 text-xs text-cinza">Ambiente configurado: {health.liveMode ? "produção" : "teste"}. Alterações no GitHub Actions precisam de novo deploy da API. Esta verificação é local e não confirma conexão com a Stripe.</p>
   </section>;
 }
