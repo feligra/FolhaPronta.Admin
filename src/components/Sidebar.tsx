@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell, Send, ScrollText,
+  Activity, Users, CreditCard, Package, BarChart3, Mail, LogOut, Menu, X, Wrench, Bell, Send, ScrollText, MousePointer2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -16,6 +16,7 @@ interface NavItem {
 // Fases 1–5 entregues: Health + Clientes + Assinaturas + Planos + Métricas + Emails.
 const NAV: NavItem[] = [
   { to: "/metricas", label: "Métricas", icon: BarChart3 },
+  { to: "/comportamento", label: "Comportamento", icon: MousePointer2 },
   { to: "/clientes", label: "Clientes", icon: Users },
   { to: "/assinaturas", label: "Assinaturas", icon: CreditCard },
   { to: "/planos", label: "Planos", icon: Package },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity, AlertCircle, CheckCircle2, CreditCard,
   DollarSign, FileText, Loader2, Mail, RefreshCw, Sparkles, UserPlus, Users, XCircle,
@@ -16,24 +16,26 @@ export default function MetricsPage() {
   const [data, setData] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const pendingRequest = useRef(true);
 
-  const load = async () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    pendingRequest.current = true;
     setLoading(true);
     setError(null);
-    try {
-      const r = await adminApi.metrics.get();
-      setData(r);
-    } catch (err: unknown) {
-      setError(
+    adminApi.metrics.get(controller.signal).then(result => {
+      if (!controller.signal.aborted) setData(result);
+    }).catch((err: unknown) => {
+      if (!controller.signal.aborted) setError(
         (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
         "Falha ao carregar métricas."
       );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
+    }).finally(() => {
+      if (!controller.signal.aborted) { pendingRequest.current = false; setLoading(false); }
+    });
+    return () => controller.abort();
+  }, [revision]);
 
   return (
     <div className="space-y-6">
@@ -49,16 +51,20 @@ export default function MetricsPage() {
             </p>
           )}
         </div>
-        <button onClick={load} className="btn-ghost" title="Recoletar">
+        <button onClick={() => {
+          if (pendingRequest.current) return;
+          pendingRequest.current = true;
+          setRevision(value => value + 1);
+        }} disabled={loading} className="btn-ghost disabled:opacity-50" title="Recoletar">
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Recoletar
         </button>
       </header>
 
       {error && (
-        <div className="card flex items-start gap-2 text-coral-800">
+        <div role="alert" className="card flex items-start gap-2 text-coral-800">
           <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-          <span className="text-sm">{error}</span>
+          <span className="text-sm">{error}{data && " Os números exibidos são da última consulta concluída."}</span>
         </div>
       )}
 
@@ -70,25 +76,25 @@ export default function MetricsPage() {
 
       {data && (
         <>
-          {/* Linha 1 — Negócio (MRR + receita 30d destaque) */}
+          {/* Receita confirmada vem dos pagamentos, nunca do preço das assinaturas. */}
           <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <BigStat
               icon={DollarSign}
-              label="Receita recorrente mensal"
-              value={`R$ ${formatPrice(data.subscriptions.mrr)}`}
+              label="Receita recebida (total)"
+              value={data.payments.revenueTotal == null ? "Indisponível" : `R$ ${formatPrice(data.payments.revenueTotal)}`}
               tone="erva"
-              hint="Assinaturas ativas e vigentes; planos anuais divididos por 12."
+              hint="Pagamentos aprovados em BRL. Cortesias e cobranças sem pagamento ficam fora."
             />
             <BigStat
               icon={Sparkles}
-              label="Receita 30d"
+              label="Receita recebida (30d)"
               value={`R$ ${formatPrice(data.payments.revenue30d)}`}
               tone="erva"
-              hint={`${data.payments.approved30d} pagamento(s) aprovados.`}
+              hint={`${data.payments.approved30d} pagamento(s) confirmado(s), pela data do pagamento. Valores brutos, antes das taxas.`}
             />
             <BigStat
               icon={Users}
-              label="Usuários ativos"
+              label="Contas habilitadas"
               value={data.users.active}
               tone="lavanda"
               hint={`${data.users.total} no total.`}
@@ -108,7 +114,7 @@ export default function MetricsPage() {
             {/* Usuários */}
             <Card title="Usuários" icon={Users}>
               <Row label="Total" value={data.users.total} />
-              <Row label="Ativos" value={data.users.active} tone="erva" />
+              <Row label="Habilitados" value={data.users.active} tone="erva" />
               <Row label="Trial em andamento" value={data.users.withActiveTrial} tone="amarelo" />
               <Row label="Novos últimos 7d" value={data.users.last7Days} icon={UserPlus} />
               <Row label="Novos últimos 30d" value={data.users.last30Days} icon={UserPlus} />
@@ -132,9 +138,7 @@ export default function MetricsPage() {
                   );
                 })}
               </div>
-              <div className="mt-3 border-t border-tintaSoft-100 pt-3">
-                <Row label="MRR" value={`R$ ${formatPrice(data.subscriptions.mrr)}`} tone="erva" />
-              </div>
+              <p className="mt-3 border-t border-tintaSoft-100 pt-3 text-xs text-cinza">Assinaturas de cortesia concedem acesso, mas não geram receita.</p>
             </Card>
 
             {/* Pagamentos */}
@@ -143,7 +147,7 @@ export default function MetricsPage() {
               <Row label="Recusados" value={data.payments.rejected30d} icon={XCircle} tone="coral" />
               <Row label="Pendentes / em análise" value={data.payments.pending30d} tone="amarelo" />
               <div className="mt-3 border-t border-tintaSoft-100 pt-3">
-                <Row label="Receita bruta" value={`R$ ${formatPrice(data.payments.revenue30d)}`} tone="erva" />
+                <Row label="Receita recebida em BRL" value={`R$ ${formatPrice(data.payments.revenue30d)}`} tone="erva" />
               </div>
             </Card>
 
@@ -224,7 +228,7 @@ function BigStat({
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-cinza">{label}</p>
-        <p className="mt-0.5 font-display text-2xl font-bold text-tinta truncate">{value}</p>
+        <p className="mt-0.5 break-words font-display text-2xl font-bold text-tinta">{value}</p>
         {hint && <p className="mt-0.5 text-[11px] text-cinza">{hint}</p>}
       </div>
     </div>

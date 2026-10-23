@@ -9,6 +9,7 @@ import SubscriptionsPage from "@/pages/SubscriptionsPage";
 import PlansPage from "@/pages/PlansPage";
 import LessonsPage from "@/pages/LessonsPage";
 import MetricsPage from "@/pages/MetricsPage";
+import BehaviorPage from "@/pages/BehaviorPage";
 import EmailLogsPage from "@/pages/EmailLogsPage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import SendEmailPage from "@/pages/SendEmailPage";
@@ -95,6 +96,7 @@ export default function App() {
           }
         />
         <Route path="/notificacoes" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+        <Route path="/comportamento" element={<ProtectedRoute><BehaviorPage /></ProtectedRoute>} />
         <Route path="/enviar-email" element={<ProtectedRoute><SendEmailPage /></ProtectedRoute>} />
         <Route path="/logs" element={<ProtectedRoute><SystemLogsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/clientes" replace />} />

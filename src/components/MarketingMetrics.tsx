@@ -104,6 +104,7 @@ export function MarketingMetrics({ data }: { data: MarketingMetricsData }) {
     </p>
     <div>
       <h3 id="marketing-campaigns-title" className="mb-2 font-bold text-tinta">Origem das visitas consentidas</h3>
+      <p className="mb-3 text-xs text-cinza">A receita inicial abaixo pertence às visitas deste período com atribuição autorizada. Ela pode ser menor que a receita total recebida, que também inclui outras origens e renovações.</p>
       <div className="max-w-full overflow-x-auto" role="region" aria-labelledby="marketing-campaigns-title" tabIndex={0}>
       <table className="w-full min-w-[650px] table-fixed text-left text-sm">
         <thead><tr>{["Origem / mídia", "Campanha", "Visitas", "Cadastros", "Checkouts", "Novos pagantes", "Receita inicial"].map(x =>

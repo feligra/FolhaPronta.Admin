@@ -21,7 +21,7 @@ const metrics = {
   generatedAt: date, marketing,
   users: { total: 100, active: 98, withActiveTrial: 35, last7Days: 10, last30Days: 42 },
   subscriptions: { byStatus: { Active: 10, PendingPayment: 2 }, mrr: 299 },
-  payments: { approved30d: 12, rejected30d: 3, pending30d: 2, revenue30d: 358.8 },
+  payments: { approved30d: 12, rejected30d: 3, pending30d: 2, revenueTotal: 358.8, revenue30d: 358.8 },
   activities: { totalGenerated: 320, last7Days: 60, last30Days: 100, top5: [] },
   emails: { sent30d: 42, failed30d: 0, pending30d: 0, skippedDev30d: 0 },
 };
@@ -72,7 +72,7 @@ async function main() {
     await page.goto(base + "/metricas");
     await page.getByRole("heading", { name: "Aquisição e conversões" }).waitFor();
     await page.getByRole("alert").filter({ hasText: "Não foi possível consultar a fila" }).waitFor();
-    assert(await page.getByText("Receita recorrente mensal", { exact: true }).isVisible());
+    assert(await page.getByText("Receita recebida (total)", { exact: true }).isVisible());
     state.failQueue = false;
     await page.getByRole("button", { name: "Atualizar fila" }).click();
     await page.getByRole("button", { name: "Tentar novamente Purchase" }).filter({ visible: true }).waitFor();

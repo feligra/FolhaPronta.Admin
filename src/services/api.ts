@@ -287,8 +287,8 @@ export const adminApi = {
   },
 
   metrics: {
-    get: async (): Promise<MetricsResponse> => {
-      const res = await api.get<MetricsResponse>("/admin/metrics");
+    get: async (signal?: AbortSignal): Promise<MetricsResponse> => {
+      const res = await api.get<MetricsResponse>("/admin/metrics", { signal });
       return res.data;
     },
   },

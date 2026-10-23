@@ -501,7 +501,7 @@ export interface UsersMetrics {
 export interface SubscriptionsMetrics {
   /** Status (string) → count. Status sem registros não aparece no objeto. */
   byStatus: Partial<Record<SubscriptionStatus, number>>;
-  /** Monthly Recurring Revenue — soma do MonthlyAmount das Active. */
+  /** Compatibilidade da API; receita recebida é exibida a partir dos pagamentos. */
   mrr: number;
 }
 
@@ -510,6 +510,8 @@ export interface PaymentsMetrics {
   rejected30d: number;
   pending30d: number;
   revenue30d: number;
+  /** Pagamentos reais aprovados em BRL; não inclui cortesias ou projeções. */
+  revenueTotal: number;
 }
 
 export interface TopActivityType {
