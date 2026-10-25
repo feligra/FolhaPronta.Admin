@@ -285,12 +285,18 @@ export interface AdminUserDetail {
   classrooms: AdminClassroom[];
 }
 
+export type CustomerSortField = "name" | "email" | "userType" | "planSlug" | "trialStatus"
+  | "subscriptionStatus" | "totalActivitiesGenerated" | "lastActivityGeneratedAt"
+  | "createdAt" | "lastLoginAt" | "emailConfirmed";
+
 export interface UserListQuery {
   search?: string;
   isActive?: boolean;
   role?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: CustomerSortField;
+  sortDirection?: "asc" | "desc";
 }
 
 // ── Admin · Login history ─────────────────────────────────────────────

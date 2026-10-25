@@ -179,6 +179,8 @@ export const adminApi = {
       if (q.role) params.set("role", q.role);
       if (q.page) params.set("page", String(q.page));
       if (q.pageSize) params.set("pageSize", String(q.pageSize));
+      if (q.sortBy) params.set("sortBy", q.sortBy);
+      if (q.sortDirection) params.set("sortDirection", q.sortDirection);
       const qs = params.toString();
       const res = await api.get<AdminUsersListResponse>(`/admin/users${qs ? `?${qs}` : ""}`);
       return res.data;

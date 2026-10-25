@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  AlertCircle, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Users,
+  AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Users,
 } from "lucide-react";
 import { adminApi } from "@/services/api";
-import type { AdminUserListItem, AdminUsersListResponse, SubscriptionStatus } from "@/types";
-import { classNames, formatDate } from "@/utils/format";
+import type { AdminUserListItem, AdminUsersListResponse, CustomerSortField, SubscriptionStatus } from "@/types";
+import { classNames, formatDate, formatDateTime } from "@/utils/format";
+import { changeCustomerSort, CUSTOMER_SORT_FIELDS, readCustomerSort } from "@/utils/customerSorting";
 import {
   SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_TONE, USER_TYPE_LABEL,
 } from "@/utils/labels";
@@ -26,6 +27,7 @@ export default function CustomersPage() {
   const role = params.get("role") ?? ""; // "" | "Admin" | "User"
   const requestedPage = Number(params.get("page") ?? "1");
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const { field: sortBy, direction: sortDirection } = readCustomerSort(params);
 
   const [searchInput, setSearchInput] = useState(search);
   const [data, setData] = useState<AdminUsersListResponse | null>(null);
@@ -70,6 +72,8 @@ export default function CustomersPage() {
         role: role || undefined,
         page,
         pageSize: PAGE_SIZE,
+        sortBy,
+        sortDirection,
       });
       if (version === loadVersion.current) { setData(r); setError(null); }
     } catch (err: unknown) {
@@ -84,7 +88,7 @@ export default function CustomersPage() {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [search, isActive, role, page]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [search, isActive, role, page, sortBy, sortDirection]);
   useVisiblePageRefresh(() => { void load(true); });
 
   const updateFilter = (key: string, value: string | null) => {
@@ -99,6 +103,10 @@ export default function CustomersPage() {
     const next = new URLSearchParams(params);
     next.set("page", String(p));
     setParams(next);
+  };
+
+  const sort = (field: CustomerSortField, direction?: "asc" | "desc") => {
+    setParams(current => changeCustomerSort(current, field, direction));
   };
 
   const stats = useMemo(() => {
@@ -165,6 +173,19 @@ export default function CustomersPage() {
           </select>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="customer-sort" className="text-xs font-semibold text-cinza">Ordenar por</label>
+          <select id="customer-sort" value={sortBy} onChange={e => sort(e.target.value as CustomerSortField)} className="input w-full sm:w-auto">
+            {CUSTOMER_SORT_FIELDS.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+          </select>
+          <button type="button" onClick={() => sort(sortBy)} className="btn-ghost text-xs"
+            aria-label={`Ordenar em ordem ${sortDirection === "asc" ? "decrescente" : "crescente"}`}>
+            {sortDirection === "asc" ? <ArrowUp size={14} aria-hidden /> : <ArrowDown size={14} aria-hidden />}
+            {sortDirection === "asc" ? "Crescente" : "Decrescente"}
+          </button>
+          <span className="text-xs text-cinza">Datas e horários de Brasília.</span>
+        </div>
+
         {error && (
           <div className="flex items-start gap-2 rounded-md bg-coral-50 p-3 text-sm text-coral-800">
             <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
@@ -182,17 +203,17 @@ export default function CustomersPage() {
           <>
             {/* Tabela desktop */}
             <div className="hidden overflow-x-auto rounded-md border border-tintaSoft-100 lg:block">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" aria-busy={loading}>
                 <thead className="bg-tintaSoft-50/40 text-left text-[11px] font-semibold uppercase tracking-wider text-cinza">
                   <tr>
-                    <th className="px-4 py-3">Usuário</th>
-                    <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Plano / teste grátis</th>
-                    <th className="px-4 py-3">Assinatura</th>
-                    <th className="px-4 py-3">Atividades</th>
-                    <th className="px-4 py-3">Cadastro</th>
-                    <th className="px-4 py-3">Último login</th>
-                    <th className="px-4 py-3 w-8" aria-label="abrir" />
+                    <SortHeader label="Usuário" field="name" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <SortHeader label="Tipo" field="userType" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <SortHeader label="Plano / teste grátis" field="planSlug" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <SortHeader label="Assinatura" field="subscriptionStatus" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <SortHeader label="Atividades" field="totalActivitiesGenerated" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <SortHeader label="Cadastro" field="createdAt" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <SortHeader label="Último login" field="lastLoginAt" current={sortBy} direction={sortDirection} onSort={sort} />
+                    <th scope="col" className="px-4 py-3 w-8" aria-label="Abrir cliente" />
                   </tr>
                 </thead>
                 <tbody>
@@ -226,6 +247,21 @@ export default function CustomersPage() {
       </section>
     </div>
   );
+}
+
+function SortHeader({ label, field, current, direction, onSort }: {
+  label: string; field: CustomerSortField; current: CustomerSortField; direction: "asc" | "desc";
+  onSort: (field: CustomerSortField) => void;
+}) {
+  const active = current === field;
+  const nextDirection = active && direction === "asc" ? "decrescente" : "crescente";
+  const Icon = !active ? ArrowUpDown : direction === "asc" ? ArrowUp : ArrowDown;
+  return <th scope="col" className="px-4 py-3" aria-sort={active ? direction === "asc" ? "ascending" : "descending" : "none"}>
+    <button type="button" onClick={() => onSort(field)} aria-label={`Ordenar por ${label} em ordem ${nextDirection}`}
+      className="inline-flex items-center gap-1.5 rounded text-left font-semibold uppercase tracking-wider hover:text-coral focus-visible:outline focus-visible:outline-2 focus-visible:outline-coral">
+      {label}<Icon size={13} className="shrink-0" aria-hidden />
+    </button>
+  </th>;
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: "erva" | "amarelo" }) {
@@ -269,7 +305,7 @@ function Row({ user, onClick }: { user: AdminUserListItem; onClick: () => void }
       </td>
       <td className="px-4 py-3"><strong>{user.totalActivitiesGenerated ?? 0}</strong><span className="mt-0.5 block whitespace-nowrap text-[11px] text-cinza">{user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</span></td>
       <td className="px-4 py-3 text-xs text-cinza">{formatDate(user.createdAt)}</td>
-      <td className="px-4 py-3 text-xs text-cinza">{formatDate(user.lastLoginAt)}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-xs text-cinza">{formatDateTime(user.lastLoginAt)}</td>
       <td className="px-4 py-3 text-cinza"><ChevronRight size={16} /></td>
     </tr>
   );
@@ -298,6 +334,7 @@ function MobileCard({ user, onClick }: { user: AdminUserListItem; onClick: () =>
         <div className="mt-2"><TrialStatus user={user} details /></div>
         <p className="mt-2 text-xs text-cinza"><strong className="text-tinta">{user.totalActivitiesGenerated ?? 0} atividade(s)</strong> · {user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</p>
         <div className="mt-2"><EmailConfirmationPill confirmed={user.emailConfirmed} /></div>
+        <p className="mt-2 text-xs text-cinza">Último login: {formatDateTime(user.lastLoginAt)}</p>
       </div>
     </div>
   );

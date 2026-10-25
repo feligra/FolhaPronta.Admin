@@ -6,6 +6,7 @@ export const USER_TYPE_LABEL: Record<number, string> = {
   0: "Pais/Responsável",
   1: "Professor(a)",
   2: "Escola",
+  3: "Psicólogo(a)",
 };
 
 export const SUBSCRIPTION_STATUS_LABEL: Record<SubscriptionStatus, string> = {
