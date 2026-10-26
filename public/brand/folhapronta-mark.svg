@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <title>FolhaPronta</title>
+  <defs>
+    <radialGradient id="sun" cx=".36" cy=".3" r=".8">
+      <stop stop-color="#FFDA58"/>
+      <stop offset=".72" stop-color="#FFC93C"/>
+      <stop offset="1" stop-color="#FFC431"/>
+    </radialGradient>
+    <radialGradient id="center" cx=".32" cy=".25" r=".85">
+      <stop stop-color="#FF7564"/>
+      <stop offset="1" stop-color="#F76B5C"/>
+    </radialGradient>
+  </defs>
+  <circle cx="63" cy="66" r="48" fill="url(#sun)"/>
+  <circle cx="63" cy="66" r="31" fill="url(#center)"/>
+  <path d="M111 4C113 4 112 12 115 16C117 19 122 19 125 20C128 21 127 23 123 24L117 26C113 28 114 34 112 40C111 44 109 43 108 39L105 30C103 27 99 26 95 26C90 26 91 23 95 22L103 19C108 17 108 10 109 6C109 4 110 4 111 4Z" fill="#54A0A8"/>
+  <path d="M5 85C10 102 20 115 32 119" stroke="#A685C9" stroke-width="6" stroke-linecap="round"/>
+</svg>

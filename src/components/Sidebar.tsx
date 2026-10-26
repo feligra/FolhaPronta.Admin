@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { BrandLogo } from "@/components/BrandLogo";
 
 interface NavItem {
   to: string;
@@ -77,7 +78,7 @@ export function Sidebar() {
         <button ref={menuButton} onClick={() => setMobileOpen(true)} aria-label="Abrir menu" aria-expanded={mobileOpen} aria-controls="admin-sidebar" className="grid h-11 w-11 place-items-center rounded-md">
           <Menu size={20} />
         </button>
-        <div className="font-display text-base font-bold text-tinta sm:text-lg">FolhaPronta · Admin</div>
+        <BrandLogo variant="compact" />
         <div className="w-9" />
       </header>
 
@@ -98,10 +99,7 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b border-tintaSoft-100 px-5">
-          <div>
-            <div className="font-display text-lg font-bold leading-tight text-tinta">FolhaPronta</div>
-            <div className="text-[11px] uppercase tracking-wider text-cinza">Painel Admin</div>
-          </div>
+          <BrandLogo />
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Fechar menu"

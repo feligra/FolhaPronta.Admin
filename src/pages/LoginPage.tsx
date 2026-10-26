@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
   const { login, isAuthenticated, isAdmin, isLoading, logout } = useAuth();
@@ -47,11 +48,8 @@ export default function LoginPage() {
     <div className="grid min-h-screen place-items-center bg-creme px-4">
       <div className="w-full max-w-[400px]">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-tinta">
-            <span className="font-display text-xl font-bold text-creme">F</span>
-          </div>
-          <h1 className="font-display text-2xl font-bold text-tinta">FolhaPronta · Admin</h1>
-          <p className="mt-1 text-sm text-cinza">Acesso restrito a administradores.</p>
+          <h1><BrandLogo variant="login" /></h1>
+          <p className="mt-4 text-sm text-cinza">Acesso restrito a administradores.</p>
         </div>
 
         <form onSubmit={onSubmit} className="card space-y-4">
