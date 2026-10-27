@@ -98,7 +98,7 @@ async function main() {
     const dialog = page.getByRole('dialog');
     if (expectedImmediate) assert.equal(await dialog.getByRole('checkbox').count(), 0);
     else assert.equal(await dialog.getByRole('checkbox').isChecked(), false);
-    await dialog.getByRole('button', { name: 'Confirmar cancelamento', exact: true }).click();
+    await dialog.getByRole('button', { name: /^Confirmar (cancelamento|encerramento(?: da recorrência)?)$/ }).click();
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(writes.at(-1).path, `/api/admin/subscriptions/${id}/cancel`);
     assert.equal(writes.at(-1).body.immediate, expectedImmediate);
@@ -209,15 +209,18 @@ async function main() {
     await check('Stripe expirada e cancelada sem acesso permitem encerramento imediato na tabela', async () => {
       for (const id of ['stripe-expired', 'stripe-cancelled', 'stripe-pending']) {
         await list(id);
-        await cancel(id, true, page.getByRole('button', { name: 'Cancelar assinatura', exact: true }));
+        const label = id === 'stripe-pending' ? 'Cancelar' : 'Encerrar recorrência';
+        assert.equal(await page.getByRole('button', { name: /Estender/ }).filter({ visible: true }).count(), 0);
+        await cancel(id, true, page.getByRole('button', { name: label, exact: true }).filter({ visible: true }));
       }
       await list('manual-expired');
-      assert(await page.getByRole('button', { name: 'Sem ação aplicável', exact: true }).isDisabled());
+      await visible('Sem ações disponíveis').waitFor();
+      assert.equal(await page.getByRole('button', { name: /Cancelar|Encerrar recorrência|Estender/ }).filter({ visible: true }).count(), 0);
     });
     await check('Plano ativo Stripe e Mercado Pago preservam cancelamento ao fim do período', async () => {
       for (const id of ['stripe-active', 'mercado-pago']) {
         await list(id);
-        await cancel(id, false, page.getByRole('button', { name: 'Cancelar assinatura', exact: true }));
+        await cancel(id, false, page.getByRole('button', { name: 'Cancelar', exact: true }).filter({ visible: true }));
       }
     });
     await check('Detalhe conserva concessão e permite encerrar Stripe expirada ou cancelada', async () => {
@@ -226,7 +229,8 @@ async function main() {
         assert(await visible('Stripe').isVisible());
         assert(await visible('cus_public_reference').isVisible());
         assert(await page.getByRole('button', { name: 'Conceder nova assinatura', exact: true }).isVisible());
-        await cancel(id, true, page.getByRole('button', { name: 'Encerrar assinatura', exact: true }));
+        assert.equal(await page.getByRole('button', { name: /Estender/ }).count(), 0);
+        await cancel(id, true, page.getByRole('button', { name: 'Encerrar recorrência', exact: true }));
       }
     });
     await check('Detalhe conserva troca, cortesia e identificadores de pagamentos dos dois provedores', async () => {
@@ -248,8 +252,36 @@ async function main() {
       await cancel('stripe-pending', true, page.getByRole('button', { name: 'Cancelar', exact: true }).filter({ visible: true }));
       await detail('stripe-cancelled');
       assert(await page.getByRole('button', { name: 'Conceder nova assinatura', exact: true }).isVisible());
-      await cancel('stripe-cancelled', true, page.getByRole('button', { name: 'Encerrar assinatura', exact: true }));
+      await cancel('stripe-cancelled', true, page.getByRole('button', { name: 'Encerrar recorrência', exact: true }));
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    });
+    await check('Detalhe revalida Active antigo vencido mesmo com hasAccess e canExtend obsoletos', async () => {
+      const subscription = fixtures.find(item => item.id === 'stripe-active');
+      subscription.currentPeriodEnd = new Date(Date.now() - 60000).toISOString();
+      subscription.canExtend = true;
+      await detail(subscription.id);
+      await visible('Expirada').waitFor();
+      assert.equal(await page.getByRole('button', { name: /Estender|Trocar plano/ }).count(), 0);
+      await page.getByRole('button', { name: 'Conceder nova assinatura', exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Encerrar recorrência', exact: true }).waitFor();
+      await page.screenshot({ path: path.join(output, 'detalhe-api-antiga-expirada.png'), fullPage: true });
+    });
+    await check('Vencimento com modal aberto encerra recorrência imediatamente sem opção de prolongar acesso', async () => {
+      const subscription = fixtures.find(item => item.id === 'stripe-active');
+      const clock = new Date();
+      await page.clock.install({ time: clock });
+      subscription.currentPeriodEnd = new Date(clock.getTime() + 10000).toISOString();
+      await detail(subscription.id);
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      assert.equal(await dialog.getByRole('checkbox').isChecked(), false);
+      await page.clock.fastForward(10000);
+      await dialog.getByRole('heading', { name: 'Encerrar recorrência', exact: true }).waitFor();
+      assert.equal(await dialog.getByRole('checkbox').count(), 0);
+      await dialog.getByRole('button', { name: 'Confirmar encerramento da recorrência', exact: true }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      assert.equal(writes.at(-1).path, '/api/admin/subscriptions/stripe-active/cancel');
+      assert.equal(writes.at(-1).body.immediate, true);
     });
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);

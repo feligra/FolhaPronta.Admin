@@ -5,6 +5,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_BASE_URL || 'http://127.0.0.1:3192';
 const output = path.resolve(process.env.TEST_OUTPUT_DIR || 'dist/verification/stripe-processing');
 const now = new Date().toISOString();
+const paidPeriod = { currentPeriodStart: now, currentPeriodEnd: new Date(Date.now() + 30 * 86400000).toISOString() };
 const progress = { subscriptionId: 'checkout-new', planName: 'Premium mensal', amount: 29.9,
   currency: 'BRL', status: 'AwaitingConfirmation', completedAt: now, canCancel: false };
 const subscription = { id: 'checkout-new', userId: 'customer', userName: 'Cliente de teste',
@@ -91,7 +92,7 @@ async function main() {
     });
     await check('Confirmação atualiza histórico automaticamente sem recarregar ou trocar aba', async () => {
       detail = { ...detail, checkoutProgress: null,
-        currentSubscription: { ...subscription, status: 'Active', hasAccess: true },
+        currentSubscription: { ...subscription, ...paidPeriod, status: 'Active', hasAccess: true },
         payments: [{ ...payment, status: 'Approved', paidAt: now }] };
       await tick();
       await history().getByText('Aprovado', { exact: true }).waitFor();
@@ -116,7 +117,7 @@ async function main() {
       await page.getByRole('button', { name: 'Pagamentos', exact: true }).click();
     });
     await check('Nova contratação em processamento preserva assinatura vigente', async () => {
-      const old = { ...subscription, id: 'paid-old', planName: 'Plano vigente', status: 'Active', hasAccess: true };
+      const old = { ...subscription, ...paidPeriod, id: 'paid-old', planName: 'Plano vigente', status: 'Active', hasAccess: true };
       detail = { ...detail, currentSubscription: old, checkoutProgress: progress, payments: [] };
       await tick();
       await page.getByText('Pagamento em processamento', { exact: true }).waitFor();
@@ -132,7 +133,7 @@ async function main() {
       await page.getByRole('button', { name: 'Assinatura', exact: true }).click();
       await page.getByText('Plano vigente', { exact: true }).waitFor();
       const previousDetail = detail;
-      detail = { ...detail, currentSubscription: { ...subscription, status: 'Active', hasAccess: true }, checkoutProgress: null };
+      detail = { ...detail, currentSubscription: { ...subscription, ...paidPeriod, status: 'Active', hasAccess: true }, checkoutProgress: null };
       const detailHeld = new Promise(resolve => { notifyDetailHeld = resolve; });
       holdDetail = true;
       await tick();
@@ -154,7 +155,7 @@ async function main() {
       await page.getByText('Nova contratação em processamento: Premium mensal', { exact: true }).filter({ visible: true }).waitFor();
     });
     await check('Lista de assinaturas acompanha o desfecho automaticamente', async () => {
-      items = [{ ...subscription, status: 'Active', hasAccess: true, checkoutProgress: null }];
+      items = [{ ...subscription, ...paidPeriod, status: 'Active', hasAccess: true, checkoutProgress: null }];
       await tick();
       await page.getByText('Premium mensal', { exact: true }).filter({ visible: true }).waitFor();
       assert.equal(await page.getByText('Nova contratação em processamento: Premium mensal', { exact: true }).count(), 0);

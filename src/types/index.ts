@@ -145,6 +145,8 @@ export interface AdminUserListItem {
   lastLoginAt: string | null;
   planSlug: string | null;
   subscriptionStatus: SubscriptionStatus | null;
+  /** Effective subscription expiry, separate from the user's free trial. */
+  subscriptionEndsAt?: string | null;
   isPaidPlan: boolean;
   isTrialActive: boolean;
   trialStatus: AdminTrialStatus;
@@ -207,6 +209,11 @@ export type PaymentProvider = "Manual" | "MercadoPago" | "Stripe";
 export interface AdminSubscriptionProvider {
   provider?: PaymentProvider;
   hasProviderAgreement?: boolean;
+  rawStatus?: SubscriptionStatus;
+  canCancel?: boolean;
+  canExtend?: boolean;
+  canCancelRenewal?: boolean;
+  trialEndsAt?: string | null;
   providerSubscriptionId?: string | null;
   mercadoPagoSubscriptionId?: string | null;
   stripeSubscriptionId?: string | null;
@@ -347,7 +354,12 @@ export interface SubscriptionListQuery {
   planId?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: SubscriptionSortField;
+  sortDirection?: "asc" | "desc";
 }
+
+export type SubscriptionSortField = "userName" | "userEmail" | "planName" | "provider"
+  | "monthlyAmount" | "status" | "currentPeriodEnd" | "createdAt";
 
 // ── Admin · Plans ─────────────────────────────────────────────────────
 // Lista de TODOS os tipos de atividade conhecidos pelo backend (espelha

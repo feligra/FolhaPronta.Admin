@@ -4,8 +4,8 @@ import {
   AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Loader2, RefreshCw, Search, Users,
 } from "lucide-react";
 import { adminApi } from "@/services/api";
-import type { AdminUserListItem, AdminUsersListResponse, CustomerSortField, SubscriptionStatus } from "@/types";
-import { classNames, formatDate, formatDateTime } from "@/utils/format";
+import type { AdminUserListItem, AdminUsersListResponse, CustomerSortField } from "@/types";
+import { classNames, formatDate, formatDateTime, parseApiDate } from "@/utils/format";
 import { changeCustomerSort, CUSTOMER_SORT_FIELDS, readCustomerSort } from "@/utils/customerSorting";
 import {
   SUBSCRIPTION_STATUS_LABEL, SUBSCRIPTION_STATUS_TONE, USER_TYPE_LABEL,
@@ -14,6 +14,9 @@ import { StatusPill } from "@/components/StatusPill";
 import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
 import { TrialStatus } from "@/components/TrialStatus";
 import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
+import { useAccessClock } from "@/hooks/useAccessClock";
+import { getSubscriptionStatus } from "@/utils/billing";
+import { customerSubscriptionIsCurrent } from "@/utils/customerTrial";
 
 const PAGE_SIZE = 20;
 
@@ -31,6 +34,10 @@ export default function CustomersPage() {
 
   const [searchInput, setSearchInput] = useState(search);
   const [data, setData] = useState<AdminUsersListResponse | null>(null);
+  const nextSubscriptionEnd = data?.items.map(user => user.subscriptionEndsAt)
+    .filter((end): end is string => !!end && parseApiDate(end).getTime() > Date.now())
+    .sort((a, b) => parseApiDate(a).getTime() - parseApiDate(b).getTime())[0];
+  const now = useAccessClock(nextSubscriptionEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,10 +121,10 @@ export default function CustomersPage() {
     return {
       total: data.totalCount,
       active: data.items.filter((u) => u.isActive).length,
-      paying: data.items.filter((u) => u.isPaidPlan).length,
+      paying: data.items.filter((u) => customerSubscriptionIsCurrent(u, now)).length,
       pending: data.items.filter((u) => u.subscriptionStatus === "PendingPayment").length,
     };
-  }, [data]);
+  }, [data, now]);
 
   return (
     <div className="space-y-6">
@@ -136,8 +143,8 @@ export default function CustomersPage() {
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Total (filtro atual)" value={stats.total} />
-        <Stat label="Ativos (página)" value={stats.active} />
-        <Stat label="Plano pago vigente (página)" value={stats.paying} tone="erva" />
+        <Stat label="Contas ativas (página)" value={stats.active} />
+        <Stat label="Plano vigente (página)" value={stats.paying} tone="erva" />
         <Stat label="Pagamento pendente (página)" value={stats.pending} tone="amarelo" />
       </section>
 
@@ -158,9 +165,9 @@ export default function CustomersPage() {
             onChange={(e) => updateFilter("isActive", e.target.value || null)}
             className="input sm:w-[180px]"
           >
-            <option value="">Status: todos</option>
-            <option value="true">Ativos</option>
-            <option value="false">Inativos</option>
+            <option value="">Conta: todas</option>
+            <option value="true">Contas ativas</option>
+            <option value="false">Contas inativas</option>
           </select>
           <select
             value={role}
@@ -301,7 +308,7 @@ function Row({ user, onClick }: { user: AdminUserListItem; onClick: () => void }
         <div className="mt-2 min-w-[170px]"><TrialStatus user={user} details /></div>
       </td>
       <td className="px-4 py-3">
-        <SubBadge status={user.subscriptionStatus} />
+        <SubBadge user={user} />
       </td>
       <td className="px-4 py-3"><strong>{user.totalActivitiesGenerated ?? 0}</strong><span className="mt-0.5 block whitespace-nowrap text-[11px] text-cinza">{user.lastActivityGeneratedAt ? `Última: ${formatDate(user.lastActivityGeneratedAt)}` : "Sem geração registrada"}</span></td>
       <td className="px-4 py-3 text-xs text-cinza">{formatDate(user.createdAt)}</td>
@@ -328,7 +335,7 @@ function MobileCard({ user, onClick }: { user: AdminUserListItem; onClick: () =>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <PlanBadge slug={user.planSlug} />
-          <SubBadge status={user.subscriptionStatus} />
+          <SubBadge user={user} />
           <span className="text-[10px] text-cinza">{USER_TYPE_LABEL[user.userType] ?? ""}</span>
         </div>
         <div className="mt-2"><TrialStatus user={user} details /></div>
@@ -365,7 +372,12 @@ function PlanBadge({ slug }: { slug: string | null }) {
   );
 }
 
-function SubBadge({ status }: { status: SubscriptionStatus | null }) {
+function SubBadge({ user }: { user: AdminUserListItem }) {
+  const end = user.subscriptionEndsAt === undefined && user.subscriptionStatus === "Trialing" ? user.trialEndsAt : user.subscriptionEndsAt;
+  const now = useAccessClock(end);
+  const status = user.subscriptionStatus && end !== undefined
+    ? getSubscriptionStatus({ status: user.subscriptionStatus, hasAccess: user.isPaidPlan || user.isTrialActive, currentPeriodEnd: end }, now)
+    : user.subscriptionStatus;
   if (!status) return <span className="text-xs text-cinza">—</span>;
   return (
     <StatusPill tone={SUBSCRIPTION_STATUS_TONE[status]}>

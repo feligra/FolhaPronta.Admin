@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle, ArrowLeft, Ban, BookOpen, CalendarPlus, CheckCircle2, CreditCard,
@@ -19,11 +19,15 @@ import {
 } from "@/utils/labels";
 import { StatusPill } from "@/components/StatusPill";
 import { BillingProviderReference } from "@/components/BillingProviderReference";
-import { hasProviderAgreement, paymentProviderLabel, subscriptionReference } from "@/utils/billing";
+import {
+  canCancelSubscription, canExtendSubscription, getSubscriptionStatus, hasSubscriptionAccess as subscriptionHasAccess, isRenewalCancellation,
+  paymentProviderLabel, subscriptionPeriodEnd, subscriptionReference,
+} from "@/utils/billing";
 import { AdminDialog } from "@/components/AdminDialog";
 import { EmailConfirmationPill } from "@/components/EmailConfirmationPill";
 import { TrialStatus } from "@/components/TrialStatus";
 import { useVisiblePageRefresh } from "@/hooks/useVisiblePageRefresh";
+import { useAccessClock } from "@/hooks/useAccessClock";
 
 type TabKey = "overview" | "subscription" | "payments" | "activities" | "classrooms" | "logins";
 
@@ -40,6 +44,8 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [data, setData] = useState<AdminUserDetail | null>(null);
+  const subscriptionEnd = data?.currentSubscription ? subscriptionPeriodEnd(data.currentSubscription) : null;
+  const now = useAccessClock(subscriptionEnd);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("overview");
@@ -52,7 +58,19 @@ export default function CustomerDetailPage() {
 
   // Modal state pra ações de assinatura. Só uma aberta por vez.
   type SubAction = { kind: "grant" | "change" | "cancel" | "extend" } | null;
-  const [subAction, setSubAction] = useState<SubAction>(null);
+  const [subAction, setSubActionState] = useState<SubAction>(null);
+  const subActionRef = useRef<SubAction>(null);
+  const setSubAction = useCallback((action: SubAction) => {
+    subActionRef.current = action;
+    setSubActionState(action);
+  }, []);
+  useEffect(() => {
+    const subscription = data?.currentSubscription;
+    if (!subscription || !subAction) return;
+    if (subAction.kind === "extend" && !canExtendSubscription(subscription, now)
+      || subAction.kind === "cancel" && !canCancelSubscription(subscription, now)
+      || subAction.kind === "change" && !subscriptionHasAccess(subscription, now)) setSubAction(null);
+  }, [data, now, subAction, setSubAction]);
 
   // Modais de edição/exclusão do USUÁRIO (não da sub).
   const [editingUser, setEditingUser] = useState(false);
@@ -64,7 +82,7 @@ export default function CustomerDetailPage() {
   useEffect(() => () => { loadVersion.current++; }, []);
 
   const load = async (background = false) => {
-    if (!id || (background && (activeLoads.current > 0 || confirmingEmailRef.current || backgroundRefreshBlocked.current))) return;
+    if (!id || currentUserId.current !== id || (background && (activeLoads.current > 0 || confirmingEmailRef.current || backgroundRefreshBlocked.current))) return;
     activeLoads.current++;
     const version = ++loadVersion.current;
     if (!background) {
@@ -74,7 +92,8 @@ export default function CustomerDetailPage() {
     try {
       const r = await adminApi.users.detail(id);
       // A pending refresh must not replace the subscription targeted by an open action.
-      if (version === loadVersion.current && (!background || !backgroundRefreshBlocked.current)) {
+      if (version === loadVersion.current && currentUserId.current === id
+        && r.user.id.toLowerCase() === id.toLowerCase() && (!background || !backgroundRefreshBlocked.current)) {
         setData(r); setError(null);
       }
     } catch (err: unknown) {
@@ -87,6 +106,17 @@ export default function CustomerDetailPage() {
       activeLoads.current--;
       if (version === loadVersion.current) setLoading(false);
     }
+  };
+
+  const refreshCurrentDetail = useRef<() => void>(() => {});
+  refreshCurrentDetail.current = () => { void load(); };
+  const finishSubscriptionAction = (action: SubAction, ownerId: string | undefined, result?: AdminGrantSubscriptionResponse) => {
+    // A completed request belongs to the customer and modal that started it.
+    // Closing it or moving to another customer must not affect a new action.
+    if (!action || currentUserId.current !== ownerId || subActionRef.current !== action) return;
+    if (result) setGrantResult(result);
+    setSubAction(null);
+    refreshCurrentDetail.current();
   };
 
   const confirmCurrentEmail = async () => {
@@ -125,7 +155,7 @@ export default function CustomerDetailPage() {
     setData(null); setTab("overview"); setSubAction(null); setEditingUser(false); setDeletingUser(false); setGrantResult(null);
     setConfirmationNotice(null); setConfirmingEmail(false); confirmingEmailRef.current = false;
     void load();
-    return () => { loadVersion.current++; };
+    return () => { loadVersion.current++; subActionRef.current = null; };
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [id]);
   const awaitingPayment = !!data?.checkoutProgress || data?.currentSubscription?.status === "PendingPayment"
@@ -161,6 +191,11 @@ export default function CustomerDetailPage() {
   }
 
   const { user, currentSubscription, checkoutProgress, payments, totalActivitiesGenerated, activitiesByType, classrooms, recentActivities = [] } = data;
+  const subscriptionStatus = currentSubscription ? getSubscriptionStatus(currentSubscription, now) : null;
+  const hasSubscriptionAccess = !!currentSubscription && subscriptionHasAccess(currentSubscription, now);
+  const canExtend = !!currentSubscription && canExtendSubscription(currentSubscription, now);
+  const canCancel = !!currentSubscription && canCancelSubscription(currentSubscription, now);
+  const renewalOnly = !!currentSubscription && isRenewalCancellation(currentSubscription, now);
   // This row represents the verified checkout while its invoice is being synchronized.
   // It is replaced by the real payment record, never counted as received revenue.
   const processingWithoutRecord = checkoutProgress?.status === "AwaitingConfirmation"
@@ -188,13 +223,13 @@ export default function CustomerDetailPage() {
             <p className="break-all text-sm text-cinza">{user.email}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <StatusPill tone={user.isActive ? "erva" : "coral"}>
-                {user.isActive ? "Ativo" : "Inativo"}
+                {user.isActive ? "Conta ativa" : "Conta desativada"}
               </StatusPill>
               {user.role === "Admin" && <StatusPill tone="coral">Admin</StatusPill>}
               <StatusPill tone="neutral">{USER_TYPE_LABEL[user.userType] ?? "—"}</StatusPill>
               <EmailConfirmationPill confirmed={user.emailConfirmed} />
             </div>
-            <div className="mt-2"><TrialStatus user={user} details /></div>
+            <div className="mt-2"><TrialStatus user={{ ...user, subscriptionEndsAt: subscriptionEnd }} details /></div>
           </div>
         </div>
         <div className="flex flex-col items-start gap-3 sm:items-end sm:text-right">
@@ -286,7 +321,7 @@ export default function CustomerDetailPage() {
             )}
           </Section>
           <Section title="Teste grátis">
-            <TrialStatus user={user} details />
+            <TrialStatus user={{ ...user, subscriptionEndsAt: subscriptionEnd }} details />
             {user.trialStartedAt ? (
               <>
                 <Field label="Início (Brasília)" value={formatDateTime(user.trialStartedAt)} />
@@ -317,17 +352,17 @@ export default function CustomerDetailPage() {
                     R$ {formatPrice(currentSubscription.monthlyAmount)}/{currentSubscription.billingFrequencyMonths === 12 ? "ano" : "mês"}
                   </p>
                 </div>
-                <StatusPill tone={SUBSCRIPTION_STATUS_TONE[currentSubscription.status]}>
+                <StatusPill tone={SUBSCRIPTION_STATUS_TONE[subscriptionStatus!]}>
                   {checkoutProgress?.subscriptionId === currentSubscription.id
                     ? checkoutProgress.status === "PaymentFailed" ? "Pagamento não confirmado" : "Em processamento"
-                    : SUBSCRIPTION_STATUS_LABEL[currentSubscription.status]}
+                    : SUBSCRIPTION_STATUS_LABEL[subscriptionStatus!]}
                 </StatusPill>
               </div>
               <div className="grid gap-3 pt-2 sm:grid-cols-2">
                 <Field label="Plano (slug)" value={currentSubscription.planSlug ?? "—"} />
-                <Field label="Acesso vigente?" value={currentSubscription.hasAccess ? "Sim" : "Não"} />
+                <Field label="Acesso vigente?" value={hasSubscriptionAccess ? "Sim" : "Não"} />
                 <Field label="Início do período" value={formatDate(currentSubscription.currentPeriodStart)} />
-                <Field label="Fim do período" value={formatDate(currentSubscription.currentPeriodEnd)} />
+                <Field label="Fim do período" value={formatDate(subscriptionEnd)} />
                 <Field label="Cancelada em" value={formatDate(currentSubscription.canceledAt)} />
                 <Field label="Motivo do cancelamento" value={currentSubscription.cancelReason || "—"} />
                 <Field label="Subscription id" value={currentSubscription.id} mono />
@@ -342,46 +377,26 @@ export default function CustomerDetailPage() {
                 <Field label="Criada em" value={formatDate(currentSubscription.createdAt)} />
               </div>
 
-              {/* Ações administrativas — variantes dependendo do estado da sub.
-                  - Active: cancelar (civilizado) é a opção natural
-                  - Cancelled-vigente: já tá cancelada, só faz sentido cortar acesso AGORA
-                  - Sem acesso (Cancelled-expirada/Expired/PendingPayment-sem-acesso):
-                    só conceder nova faz sentido. */}
+              {/* Revalidar datas também protege a tela contra respostas de APIs antigas. */}
               <div className="flex flex-wrap gap-2 border-t border-tintaSoft-100 pt-4">
-                {currentSubscription.hasAccess && currentSubscription.status !== "Cancelled" && (
-                  <>
-                    <button onClick={() => setSubAction({ kind: "change" })} className="btn-primary">
-                      <Repeat size={14} /> Trocar plano
-                    </button>
-                    <button onClick={() => setSubAction({ kind: "extend" })} className="btn-ghost">
-                      <CalendarPlus size={14} /> Estender vigência
-                    </button>
-                    <button onClick={() => setSubAction({ kind: "cancel" })} className="btn-ghost">
-                      <Ban size={14} /> Cancelar
-                    </button>
-                  </>
+                {hasSubscriptionAccess && (
+                  <button onClick={() => setSubAction({ kind: "change" })} className="btn-primary">
+                    <Repeat size={14} /> Trocar plano
+                  </button>
                 )}
-                {currentSubscription.hasAccess && currentSubscription.status === "Cancelled" && (
-                  <>
-                    <button onClick={() => setSubAction({ kind: "extend" })} className="btn-primary">
-                      <CalendarPlus size={14} /> Estender (reativa)
-                    </button>
-                    <button onClick={() => setSubAction({ kind: "change" })} className="btn-ghost">
-                      <Repeat size={14} /> Trocar plano
-                    </button>
-                    <button onClick={() => setSubAction({ kind: "cancel" })} className="btn-ghost">
-                      <Ban size={14} /> Cortar acesso agora
-                    </button>
-                  </>
+                {canExtend && (
+                  <button onClick={() => setSubAction({ kind: "extend" })} className="btn-ghost">
+                    <CalendarPlus size={14} /> {subscriptionStatus === "Cancelled" ? "Estender (reativa)" : "Estender vigência"}
+                  </button>
                 )}
-                {!currentSubscription.hasAccess && (
+                {!hasSubscriptionAccess && (
                   <button onClick={() => setSubAction({ kind: "grant" })} className="btn-primary">
                     <Sparkles size={14} /> Conceder nova assinatura
                   </button>
                 )}
-                {!currentSubscription.hasAccess && hasProviderAgreement(currentSubscription) && (
+                {canCancel && (
                   <button onClick={() => setSubAction({ kind: "cancel" })} className="btn-ghost">
-                    <Ban size={14} /> Encerrar assinatura
+                    <Ban size={14} /> {renewalOnly ? "Encerrar recorrência" : subscriptionStatus === "Cancelled" && hasSubscriptionAccess ? "Cortar acesso agora" : "Cancelar"}
                   </button>
                 )}
               </div>
@@ -403,34 +418,35 @@ export default function CustomerDetailPage() {
           userId={id}
           userEmail={user.email}
           onClose={() => setSubAction(null)}
-          onRefresh={() => { setSubAction(null); void load(); }}
-          onDone={(result) => { setGrantResult(result); setSubAction(null); void load(); }}
+          onRefresh={() => finishSubscriptionAction(subAction, id)}
+          onDone={(result) => finishSubscriptionAction(subAction, id, result)}
         />
       )}
-      {subAction?.kind === "change" && currentSubscription && (
+      {subAction?.kind === "change" && currentSubscription && hasSubscriptionAccess && (
         <ChangePlanModal
           subscriptionId={currentSubscription.id}
           currentPlanId={currentSubscription.planId}
           onClose={() => setSubAction(null)}
-          onDone={() => { setSubAction(null); load(); }}
+          onDone={() => finishSubscriptionAction(subAction, id)}
         />
       )}
-      {subAction?.kind === "extend" && currentSubscription && (
+      {subAction?.kind === "extend" && currentSubscription && canExtend && (
         <ExtendSubscriptionModal
           subscriptionId={currentSubscription.id}
           currentPeriodEnd={currentSubscription.currentPeriodEnd}
           onClose={() => setSubAction(null)}
-          onDone={() => { setSubAction(null); load(); }}
+          onDone={() => finishSubscriptionAction(subAction, id)}
         />
       )}
-      {subAction?.kind === "cancel" && currentSubscription && (
+      {subAction?.kind === "cancel" && currentSubscription && canCancel && (
         <CancelSubscriptionModal
           subscriptionId={currentSubscription.id}
-          currentPeriodEnd={currentSubscription.currentPeriodEnd}
-          alreadyCancelled={currentSubscription.status === "Cancelled"}
-          hasAccess={currentSubscription.hasAccess}
+          currentPeriodEnd={subscriptionEnd}
+          alreadyCancelled={subscriptionStatus === "Cancelled"}
+          hasAccess={hasSubscriptionAccess}
+          renewalOnly={renewalOnly}
           onClose={() => setSubAction(null)}
-          onDone={() => { setSubAction(null); load(); }}
+          onDone={() => finishSubscriptionAction(subAction, id)}
         />
       )}
 
@@ -1008,8 +1024,8 @@ function ExtendSubscriptionModal({
   return (
     <Modal title="Estender vigência (cortesia)" onClose={onClose}>
       <p className="text-sm text-tinta/80">
-        Vigência atual: <strong>{formatDate(currentPeriodEnd)}</strong>. Subs Cancelled/Expired
-        voltam pra Active automaticamente.
+        Vigência atual: <strong>{formatDate(currentPeriodEnd)}</strong>. A cortesia será acrescentada ao período ainda vigente.
+        Uma assinatura cancelada com acesso vigente será reativada.
       </p>
       <DaysPicker days={days} setDays={setDays} />
       <label className="label mt-4">Motivo (opcional)</label>
@@ -1028,11 +1044,12 @@ function ExtendSubscriptionModal({
 
 // ── Cancelar ───────────────────────────────────────────────────────────
 function CancelSubscriptionModal({
-  subscriptionId, currentPeriodEnd, alreadyCancelled, hasAccess, onClose, onDone,
+  subscriptionId, currentPeriodEnd, alreadyCancelled, hasAccess, renewalOnly, onClose, onDone,
 }: {
   subscriptionId: string; currentPeriodEnd: string | null;
   alreadyCancelled?: boolean;
   hasAccess: boolean;
+  renewalOnly: boolean;
   onClose: () => void; onDone: () => void;
 }) {
   const immediateOnly = !!alreadyCancelled || !hasAccess;
@@ -1045,7 +1062,7 @@ function CancelSubscriptionModal({
     setBusy(true);
     setErr(null);
     try {
-      await adminApi.subscriptions.cancel(subscriptionId, reason || undefined, immediate);
+      await adminApi.subscriptions.cancel(subscriptionId, reason || undefined, immediateOnly || immediate);
       onDone();
     } catch (e: unknown) {
       setErr((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
@@ -1055,10 +1072,14 @@ function CancelSubscriptionModal({
 
   return (
     <Modal
-      title={!hasAccess ? "Encerrar assinatura" : alreadyCancelled ? "Cortar acesso agora" : "Cancelar assinatura"}
+      title={renewalOnly ? "Encerrar recorrência" : alreadyCancelled && hasAccess ? "Cortar acesso agora" : "Cancelar assinatura"}
       onClose={onClose}
     >
-      {!hasAccess ? (
+      {renewalOnly ? (
+        <p className="text-sm text-tinta/80">
+          O acesso já terminou. Esta ação encerra qualquer renovação ainda pendente no provedor, sem reativar o plano.
+        </p>
+      ) : !hasAccess ? (
         <p className="text-sm text-tinta/80">
           A assinatura será encerrada imediatamente, incluindo qualquer renovação ainda pendente no provedor.
         </p>
@@ -1088,7 +1109,7 @@ function CancelSubscriptionModal({
         <button type="button" onClick={onClose} className="btn-ghost">Voltar</button>
         <button type="button" onClick={submit} disabled={busy} className="btn-coral">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
-          {alreadyCancelled && hasAccess ? "Confirmar corte de acesso" : "Confirmar cancelamento"}
+          {renewalOnly ? "Confirmar encerramento da recorrência" : alreadyCancelled && hasAccess ? "Confirmar corte de acesso" : "Confirmar cancelamento"}
         </button>
       </div>
     </Modal>

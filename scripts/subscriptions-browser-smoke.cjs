@@ -108,7 +108,7 @@ async function main() {
       assert.equal(await page.locator('main a[href="/clientes/customer-1"]:visible').count(), 0);
       assert.equal(await page.locator('main a[href="/clientes/customer-2"]:visible').count(), 1);
       assert(await page.getByText("1–1 de 1", { exact: true }).isVisible());
-      assert(await page.getByRole("button", { name: "Estenda uma assinatura ativa, cancelada ou expirada" }).isDisabled());
+      assert.equal(await page.getByRole("button", { name: "Estender", exact: true }).count(), 0);
     });
     await check("Busca respeita filtro da assinatura atual e apresenta resultado vazio", async () => {
       await waitForList(() => page.getByLabel("Buscar cliente por nome ou e-mail").fill("cliente1@example.com"), (q) => q.get("search") === "cliente1@example.com");

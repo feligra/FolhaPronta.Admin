@@ -3,7 +3,7 @@
 const ADMIN_TIME_ZONE = "America/Sao_Paulo";
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-function parseApiDate(value: string): Date {
+export function parseApiDate(value: string): Date {
   // O banco legado retorna instantes UTC sem o sufixo Z. Interpretá-los
   // como hora local adianta o login em três horas no horário de Brasília.
   const hasTime = /^\d{4}-\d{2}-\d{2}T/.test(value);

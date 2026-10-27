@@ -7,6 +7,7 @@ const base = process.env.TEST_BASE_URL || "http://127.0.0.1:3028";
 const output = process.env.TEST_OUTPUT_DIR;
 const started = "2026-10-16T15:00:00";
 const ends = "2026-10-23T15:00:00";
+const subscriptionEnd = "2026-10-30T15:00:00";
 const initial = {
   id: "customer-1", name: "Cliente de confirmação", email: "cliente@example.com", role: "User",
   userType: 1, isActive: true, emailConfirmed: false, createdAt: started, lastLoginAt: started,
@@ -22,7 +23,8 @@ function fixture(status, id = "customer-1") {
   return { ...initial, id, trialStatus: status, isActive: status !== "Inactive", emailConfirmed: status !== "WaitingForEmail",
     isTrialActive: status === "Active", trialStartedAt: ["Active", "Expired"].includes(status) ? started : null,
     trialEndsAt: ["Active", "Expired"].includes(status) ? ends : null, isPaidPlan: status === "Subscribed",
-    planSlug: status === "Subscribed" ? "premium" : null, subscriptionStatus: status === "Subscribed" ? "Active" : null };
+    planSlug: status === "Subscribed" ? "premium" : null, subscriptionStatus: status === "Subscribed" ? "Active" : null,
+    subscriptionEndsAt: status === "Subscribed" ? subscriptionEnd : null };
 }
 
 async function main() {
@@ -73,7 +75,11 @@ async function main() {
       const items = allStatuses ? Object.keys(labels).map((status, index) => fixture(status, `customer-${index + 1}`)) : [current];
       const body = url.pathname === "/api/admin/users"
         ? { items, page: 1, pageSize: 20, totalCount: items.length, totalPages: 1 }
-        : { user: current, currentSubscription: null, payments: [], totalActivitiesGenerated: 0, activitiesByType: [], classrooms: [], recentActivities: [] };
+        : { user: current, currentSubscription: current.trialStatus === "Subscribed" ? {
+          id: 'current-paid', planId: 'premium', planName: 'Premium', planSlug: 'premium', status: 'Active',
+          hasAccess: true, provider: 'Manual', monthlyAmount: 29.9, currentPeriodStart: started,
+          currentPeriodEnd: subscriptionEnd, canceledAt: null, createdAt: started,
+        } : null, payments: [], totalActivitiesGenerated: 0, activitiesByType: [], classrooms: [], recentActivities: [] };
       if (delayRead) { delayRead = false; await new Promise((resolve) => { releaseRead = resolve; }); }
       return route.fulfill({ status: 200, headers, json: body });
     }
@@ -83,7 +89,7 @@ async function main() {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.clock.install();
+  await page.clock.install({ time: new Date("2026-10-20T15:00:00Z") });
   const text = (label) => page.locator("main").getByText(label, { exact: true }).filter({ visible: true });
   const confirm = () => page.getByRole("button", { name: "Marcar e-mail como confirmado", exact: true });
   const details = async () => { await page.goto(base + "/clientes/customer-1"); await text(record.emailConfirmed ? "E-mail confirmado" : "E-mail não confirmado").waitFor(); };
@@ -165,6 +171,28 @@ async function main() {
       }
       record = fixture("Active"); await details();
       if (output) await page.screenshot({ path: path.join(output, "detalhe-ativo-mobile.png"), fullPage: true });
+    });
+    await check("O teste vence na tela aberta mesmo se a API continuar devolvendo Active", async () => {
+      allStatuses = false;
+      const boundary = await page.evaluate(() => Date.now() + 3000);
+      record = { ...fixture("Active"), trialEndsAt: new Date(boundary).toISOString() };
+      await details(); await text(labels.Active).first().waitFor();
+      await page.clock.fastForward(3000);
+      await text(labels.Expired).first().waitFor();
+      assert.equal(await text(labels.Active).count(), 0);
+      await text("Conta ativa").waitFor();
+      await page.goto(base + "/clientes"); await text(labels.Expired).waitFor();
+      assert.equal(await text(labels.Active).count(), 0);
+      await text("Contas ativas (página)").waitFor();
+      if (output) await page.screenshot({ path: path.join(output, "lista-api-antiga-trial-vencido.png"), fullPage: true });
+    });
+    await check("API antiga sem trialStatus não mostra trial vencido como ativo", async () => {
+      record = { ...fixture("Active"), trialStatus: undefined, trialEndsAt: "2026-10-19T15:00:00", subscriptionStatus: "Trialing" };
+      await details(); await text(labels.Expired).first().waitFor();
+      await page.goto(base + "/clientes"); await text(labels.Expired).waitFor();
+      await text("Expirada").waitFor();
+      assert.equal(await text(labels.Active).count(), 0);
+      assert.equal(await text("Trial").count(), 0);
     });
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
     const report = { checks, writes: writes.length, pageErrors: errors, unexpectedApiCalls: unexpected };
