@@ -190,7 +190,8 @@ export default function CustomerDetailPage() {
     );
   }
 
-  const { user, currentSubscription, checkoutProgress, payments, totalActivitiesGenerated, activitiesByType, classrooms, recentActivities = [] } = data;
+  const { user, currentSubscription, checkoutProgress, payments, totalActivitiesGenerated, activitiesByType, classrooms, recentActivities = [], children: childProfiles = [] } = data;
+  const showChildren = user.userType === 0 || childProfiles.length > 0;
   const subscriptionStatus = currentSubscription ? getSubscriptionStatus(currentSubscription, now) : null;
   const hasSubscriptionAccess = !!currentSubscription && subscriptionHasAccess(currentSubscription, now);
   const canExtend = !!currentSubscription && canExtendSubscription(currentSubscription, now);
@@ -320,6 +321,20 @@ export default function CustomerDetailPage() {
               <p className="text-sm text-cinza">Endereço não cadastrado.</p>
             )}
           </Section>
+          {showChildren && <Section title="Filhos cadastrados" className="lg:col-span-2">
+            {childProfiles.length > 0 ? <>
+              <p className="text-sm text-cinza">{childProfiles.length} {childProfiles.length === 1 ? "criança cadastrada" : "crianças cadastradas"} neste cliente.</p>
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {childProfiles.map(child => <li key={child.id} className="flex min-w-0 items-start gap-3 rounded-md border border-tintaSoft-100 p-3">
+                  <UsersIcon size={18} className="mt-0.5 shrink-0 text-turquesa" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-tinta">{child.fullName}</p>
+                    {child.nickname && child.nickname !== child.fullName && <p className="mt-1 break-words text-xs text-cinza">Apelido: {child.nickname}</p>}
+                  </div>
+                </li>)}
+              </ul>
+            </> : <p className="text-sm text-cinza">Este cliente ainda não cadastrou filhos.</p>}
+          </Section>}
           <Section title="Teste grátis">
             <TrialStatus user={{ ...user, subscriptionEndsAt: subscriptionEnd }} details />
             {user.trialStartedAt ? (
@@ -333,7 +348,9 @@ export default function CustomerDetailPage() {
           <Section title="Resumo de uso">
             <Field label="Atividades geradas" value={String(totalActivitiesGenerated)} />
             <Field label="Última geração" value={formatDateTime(recentActivities[0]?.createdAt)} />
-            <Field label="Turmas" value={String(classrooms.length)} />
+            {user.userType === 0
+              ? <Field label="Filhos cadastrados" value={String(childProfiles.length)} />
+              : <Field label="Turmas" value={String(classrooms.length)} />}
             <Field label="Pagamentos registrados" value={String(payments.length)} />
           </Section>
         </div>
@@ -708,9 +725,9 @@ function summarizeUserAgent(ua: string | null): string {
   return `${browser} · ${os}`;
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className="card space-y-3">
+    <section className={classNames("card min-w-0 space-y-3", className)}>
       <h2 className="text-xs font-bold uppercase tracking-wider text-cinza">{title}</h2>
       <div className="space-y-3">{children}</div>
     </section>

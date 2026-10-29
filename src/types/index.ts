@@ -271,6 +271,12 @@ export interface AdminClassroom {
   activeWeeklyPlanId?: string | null;
 }
 
+export interface AdminChild {
+  id: string;
+  fullName: string;
+  nickname?: string | null;
+}
+
 export interface CheckoutProgress {
   subscriptionId: string;
   planName: string;
@@ -290,6 +296,7 @@ export interface AdminUserDetail {
   activitiesByType: AdminActivityCount[];
   recentActivities: { id: string; type: string; title: string; createdAt: string; hasAnswerKey: boolean }[];
   classrooms: AdminClassroom[];
+  children?: AdminChild[];
 }
 
 export type CustomerSortField = "name" | "email" | "userType" | "planSlug" | "trialStatus"
